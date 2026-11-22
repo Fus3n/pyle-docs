@@ -162,6 +162,20 @@ if typeof(value) == int {
 
 There are no `int()`, `float()`, `bool()`, or `string()` conversion functions. Use `toint`, `tofloat`, `tonum`, `tostring`, and the string parsing methods.
 
+## Primitive types
+
+`int`, `float`, `bool`, and `none` are value types with no methods. Use the global conversion functions:
+
+| Function | Returns | Description |
+| --- | --- | --- |
+| `toint(v: any)` | `int \| none` | Truncate toward zero |
+| `tofloat(v: any)` | `float \| none` | Widen or parse |
+| `tonum(v: any)` | `int \| float \| none` | Parse a number |
+| `tostring(v: any)` | `string` | Display string |
+| `typeof(v: any)` | `string` | Type name |
+
+See [Built-in Functions](/stdlib/builtins/) for details.
+
 ## Next steps
 
 - [Operators](/language/operators/)

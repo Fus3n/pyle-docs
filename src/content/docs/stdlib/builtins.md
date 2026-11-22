@@ -28,9 +28,9 @@ Format strings are covered in [Format Strings](/language/format-strings/).
 | --- | --- | --- |
 | `typeof(v)` | `string` | Type name as a string |
 | `tostring(v: any)` | `string` | Display string, the same text `print` produces |
-| `tonum(v: any)` | `int | float | none` | Parse a number; returns `int`, `float`, or `none` |
-| `toint(v: any)` | `int | none` | Truncate to an int; returns `int` or `none` |
-| `tofloat(v: any)` | `float | none` | Widen or parse to a float; returns `float` or `none` |
+| `tonum(v: any)` | `int \| float \| none` | Parse a number; returns `int`, `float`, or `none` |
+| `toint(v: any)` | `int \| none` | Truncate to an int; returns `int` or `none` |
+| `tofloat(v: any)` | `float \| none` | Widen or parse to a float; returns `float` or `none` |
 
 ```pyle
 typeof(42)          # "int"

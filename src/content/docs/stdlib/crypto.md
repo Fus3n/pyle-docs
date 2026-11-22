@@ -15,14 +15,14 @@ let crypto = import("crypto")
 
 | Function | Returns | Description |
 | --- | --- | --- |
-| `sha256(data: string | bytes)` | `bytes` | SHA-256 digest as `Bytes` |
-| `sha256_hex(data: string | bytes)` | `string` | SHA-256 digest as a hex string |
-| `sha1(data: string | bytes)` | `bytes` | SHA-1 digest as `Bytes` |
-| `sha1_hex(data: string | bytes)` | `string` | SHA-1 digest as a hex string |
-| `md5(data: string | bytes)` | `bytes` | MD5 digest as `Bytes` |
-| `md5_hex(data: string | bytes)` | `string` | MD5 digest as a hex string |
-| `hmac_sha256(key: string | bytes, data: string | bytes)` | `bytes` | HMAC-SHA256 as `Bytes` |
-| `hmac_sha256_hex(key: string | bytes, data: string | bytes)` | `string` | HMAC-SHA256 as a hex string |
+| `sha256(data: string \| bytes)` | `bytes` | SHA-256 digest as `Bytes` |
+| `sha256_hex(data: string \| bytes)` | `string` | SHA-256 digest as a hex string |
+| `sha1(data: string \| bytes)` | `bytes` | SHA-1 digest as `Bytes` |
+| `sha1_hex(data: string \| bytes)` | `string` | SHA-1 digest as a hex string |
+| `md5(data: string \| bytes)` | `bytes` | MD5 digest as `Bytes` |
+| `md5_hex(data: string \| bytes)` | `string` | MD5 digest as a hex string |
+| `hmac_sha256(key: string \| bytes, data: string \| bytes)` | `bytes` | HMAC-SHA256 as `Bytes` |
+| `hmac_sha256_hex(key: string \| bytes, data: string \| bytes)` | `string` | HMAC-SHA256 as a hex string |
 
 `data` and `key` accept a string or `Bytes`.
 
@@ -39,9 +39,9 @@ SHA-1 and MD5 are legacy algorithms. Use SHA-256 for new designs.
 
 | Function | Returns | Description |
 | --- | --- | --- |
-| `base64_encode(data: string | bytes)` | `string` | Standard alphabet with padding |
+| `base64_encode(data: string \| bytes)` | `string` | Standard alphabet with padding |
 | `base64_decode(s: string)` | `bytes` | Decode; raises on invalid input |
-| `base64url_encode(data: string | bytes)` | `string` | URL-safe alphabet, no padding |
+| `base64url_encode(data: string \| bytes)` | `string` | URL-safe alphabet, no padding |
 | `base64url_decode(s: string)` | `bytes` | Decode unpadded URL-safe input |
 
 ```pyle

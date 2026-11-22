@@ -15,7 +15,7 @@ let json = import("json")
 
 | Function | Returns | Description |
 | --- | --- | --- |
-| `parse(text: string)` | `map | array | string | int | float | bool | none` | Parse a JSON string; returns a value or `none` on invalid input |
+| `parse(text: string)` | `map \| array \| string \| int \| float \| bool \| none` | Parse a JSON string; returns a value or `none` on invalid input |
 | `stringify(value)` | `string` | Compact JSON string |
 
 ```pyle

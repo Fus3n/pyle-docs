@@ -1,0 +1,45 @@
+---
+import { ClientRouter } from 'astro:transitions';
+const { head } = Astro.locals.starlightRoute;
+---
+
+{head.map(({ tag: Tag, attrs, content }) => (
+	<Tag {...attrs} set:html={content} />
+))}
+<ClientRouter />
+<script is:inline>
+	if (!window.__pyleSidebarPersist) {
+		window.__pyleSidebarPersist = true;
+		const KEY = 'sl-sidebar-state';
+		const read = () => {
+			try { return JSON.parse(sessionStorage.getItem(KEY) || '{}'); } catch { return {}; }
+		};
+		const save = () => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!scroller) return;
+			const target = scroller.querySelector('sl-sidebar-state-persist');
+			const state = { hash: target?.dataset.hash || '', open: [], scroll: scroller.scrollTop || 0 };
+			scroller.querySelectorAll('sl-sidebar-restore').forEach((el) => {
+				const idx = parseInt(el.dataset.index || '');
+				const details = el.closest('details');
+				if (!Number.isNaN(idx) && details) state.open[idx] = details.open;
+			});
+			try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+		};
+		const restore = () => {
+			const scroller = document.getElementById('starlight__sidebar');
+			if (!scroller) return;
+			const state = read();
+			const target = scroller.querySelector('sl-sidebar-state-persist');
+			if (state.hash && target && state.hash !== target.dataset.hash) return;
+			scroller.querySelectorAll('sl-sidebar-restore').forEach((el) => {
+				const idx = parseInt(el.dataset.index || '');
+				const details = el.closest('details');
+				if (!Number.isNaN(idx) && details && typeof state.open[idx] === 'boolean') details.open = state.open[idx];
+			});
+			if (state.scroll) scroller.scrollTop = state.scroll;
+		};
+		document.addEventListener('astro:before-preparation', save);
+		document.addEventListener('astro:page-load', restore);
+	}
+</script>

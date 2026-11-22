@@ -16,15 +16,15 @@ let os = import("os")
 | `time()` | `float` | Monotonic interval clock in float seconds. Not wall time; use it for durations |
 | `epoch()` | `int` | Unix time in whole seconds (wall clock) |
 | `clock()` | `float` | CPU seconds used by the process |
-| `difftime(t2: int | float, t1: int | float)` | `float` | `t2 - t1` in seconds, as a float |
+| `difftime(t2: int \| float, t1: int \| float)` | `float` | `t2 - t1` in seconds, as a float |
 | `sleep(ms: int)` | `none` | Block the current thread for `ms` milliseconds |
 | `sleep_async(ms: int)` | `Future` | Return a `Future` that resolves after `ms` |
 | `date()` | `string` | Local time as `"YYYY-MM-DD HH:MM:SS"` |
-| `strftime(format: string, timestamp: int | float?)` | `string` | Format epoch seconds with `strftime` codes; defaults to now |
+| `strftime(format: string, timestamp: int \| float?)` | `string` | Format epoch seconds with `strftime` codes; defaults to now |
 | `strptime(date: string, format: string)` | `int` | Parse a date string into epoch seconds; raises on mismatch |
 | `parse_date(s: string)` | `Date` | Auto-detect common date shapes and return a `Date` struct |
-| `localtime(epoch: int | float)` | `Date` | `Date` struct in local time |
-| `gmtime(epoch: int | float)` | `Date` | `Date` struct in UTC |
+| `localtime(epoch: int \| float)` | `Date` | `Date` struct in local time |
+| `gmtime(epoch: int \| float)` | `Date` | `Date` struct in UTC |
 | `timezone()` | `int` | Local offset from UTC in seconds, positive east |
 
 ```pyle
