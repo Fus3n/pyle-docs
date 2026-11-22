@@ -1,17 +1,31 @@
 {
   "name": "pyle_docs",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
+    "wasm": "node scripts/build-wasm.mjs",
     "build": "astro build",
-    "preview": "astro preview",
+    "build:all": "npm run wasm && npm run build",
+    "preview": "node scripts/preview.mjs",
+    "preview:astro": "astro preview",
     "astro": "astro"
   },
   "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.10",
     "@astrojs/starlight": "^0.43.1",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "@lezer/highlight": "^1.2.5",
     "astro": "^7.3.6",
-    "sharp": "^0.35.3"
+    "codemirror": "^6.0.2",
+    "sharp": "^0.35.3",
+    "shiki": "^4.6.0"
   }
 }

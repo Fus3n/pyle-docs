@@ -1,0 +1,5 @@
+{
+	"GCRoot": "/embedding/values/#gc-roots",
+	"BulkAlloc": "/embedding/values/#controlling-the-collector",
+	"Vec2": "/embedding/classes/"
+}

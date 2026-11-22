@@ -1,0 +1,276 @@
+---
+import Highlight from '../components/Highlight.astro';
+import SiteLayout from '../layouts/SiteLayout.astro';
+import '../styles/home.css';
+
+const base = import.meta.env.BASE_URL;
+
+const embedCode = `#include <pyle/pyle.hpp>
+#include <pyle/std/std_core.hpp>
+
+int main() {
+    pyle::Pyle vm;
+    pyle::register_core_natives(vm.vm);
+
+    vm.execute(R"(
+        fn greet(name) {
+            print("hello, " + name)
+        }
+        greet("world")
+    )", false, "main.pyl");
+}`;
+
+const hostCode = `#include <pyle/pyle.hpp>
+#include <pyle/std/std_core.hpp>
+
+struct Vec2 {
+    double x, y;
+    Vec2(double x, double y) : x(x), y(y) {}
+};
+
+int main() {
+    pyle::Pyle vm;
+    pyle::register_core_natives(vm.vm);
+
+    pyle::ClassBinder<Vec2>(vm.vm, "Vec2")
+        .constructor<double, double>()
+        .member<double, &Vec2::x>("x")
+        .member<double, &Vec2::y>("y")
+        .register_globally();
+
+    vm.execute(R"(
+        let game = import("game")
+        game.start(Vec2(2.0, 3.0))
+    )", false, "main.pyl");
+}`;
+
+const scriptCode = `# Type hints are optional and never enforced at runtime.
+struct Entity(id: int, name: string) {}
+
+struct World(entities: array) {
+    fn add(e: Entity) => self.entities.append(e)
+}
+
+fn start(origin: Vec2) {
+    let world: World = World(entities: [])
+    world.add(Entity(1, "player"))
+    printf("game started at ({}, {})", origin.x, origin.y)
+}
+
+fn update(dt: float) {
+    printf("update dt={}", dt)
+}`;
+
+const features = [
+	{
+		title: 'Embeddable by design',
+		body: 'Link libpyle, register the modules you want, and hand it a script. It pulls in only header-only fmt and unordered_dense, and never assumes a host application.',
+		icon: 'box',
+	},
+	{
+		title: 'Familiar on purpose',
+		body: 'C-like syntax shaped by JavaScript: let, fn, struct, for-in, closures. Runtime behavior borrows from Lua. Nothing to unlearn before you can be productive.',
+		icon: 'code',
+	},
+	{
+		title: 'Coroutines that fit',
+		body: 'Drive a Coro yourself, or let async.run and async.all schedule work. waitfor suspends until a Future resolves.',
+		icon: 'bolt',
+	},
+	{
+		title: 'Native when it matters',
+		body: 'Bind free functions, classes, methods, and constructors. Move values across the boundary without a serialization layer.',
+		icon: 'plug',
+	},
+	{
+		title: 'Batteries in the CLI',
+		body: 'The pyle interpreter ships json, http, crypto, worker, and declaration files for editors. The core stays lean; the CLI is ready to go.',
+		icon: 'package',
+	},
+	{
+		title: 'Runs in the browser',
+		body: 'libpyle compiles for wasm32 with Emscripten. This site runs the real language in the playground, not a reimplementation.',
+		icon: 'globe',
+	},
+];
+---
+
+<SiteLayout>
+	<div class="home">
+		<div class="home-grid-bg"></div>
+		<div class="home-wrap">
+			<section class="hero">
+				<div class="hero__copy">
+					<h1>A scripting language that <span class="accent">fits inside</span> your C++.</h1>
+					<p class="hero__lead">
+						Pyle is an embeddable dynamic language with a bytecode VM, closures, coroutines, and
+						native bindings.
+					</p>
+					<div class="hero__actions">
+						<a class="button button--primary" href={`${base}getting-started/introduction/`}>
+							Get started
+						</a>
+						<a class="button button--ghost" href={`${base}playground/`}>
+							Try the playground
+						</a>
+					</div>
+				</div>
+
+				<div class="hero-window">
+					<div class="hero-window__bar">
+						<span class="hero-window__brand">embedding</span>
+						<div class="hero-window__dots" aria-hidden="true"><i></i><i></i><i></i></div>
+					</div>
+					<div class="hero-window__panes">
+						<div class="hero-window__pane">
+							<div class="hero-window__tab">
+								<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5.5L12 4v10.5H4z"></path><path d="M9.5 1.5V4H12"></path></svg>
+								main.cpp
+							</div>
+							<Highlight code={hostCode} lang="cpp" />
+						</div>
+						<div class="hero-window__divider" aria-hidden="true">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+						</div>
+						<div class="hero-window__pane">
+							<div class="hero-window__tab">
+								<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.5h5.5L12 4v10.5H4z"></path><path d="M9.5 1.5V4H12"></path></svg>
+								game.pyl
+							</div>
+							<Highlight code={scriptCode} />
+						</div>
+					</div>
+					<div class="hero-window__output">
+						<span>$</span> ./my_game <span class="dim">→</span> game started at (2, 3)
+					</div>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="section__head">
+					<div>
+						<h2>Built to disappear into your application.</h2>
+					</div>
+					<p>
+						No host framework, no global state, no opinion about your engine. Pyle gives you a
+						language and gets out of the way.
+					</p>
+				</div>
+				<div class="feature-grid">
+					{features.map((feature) => (
+						<article class="feature">
+							<div class="feature__icon" aria-hidden="true">
+								{feature.icon === 'box' && (
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="m4.5 7.5 7.5 4 7.5-4M12 12v9"></path></svg>
+								)}
+								{feature.icon === 'code' && (
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 8-4 4 4 4m8-8 4 4-4 4M14 4l-4 16"></path></svg>
+								)}
+								{feature.icon === 'bolt' && (
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z"></path></svg>
+								)}
+								{feature.icon === 'plug' && (
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6m6-6v6M6 8h12v3a6 6 0 0 1-12 0V8Zm6 9v5"></path></svg>
+								)}
+								{feature.icon === 'package' && (
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 8 4v12l-8 4-8-4V6l8-4Z"></path><path d="m4 6 8 4 8-4M12 10v12M8 4l8 4"></path></svg>
+								)}
+								{feature.icon === 'globe' && (
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"></path></svg>
+								)}
+							</div>
+							<h3>{feature.title}</h3>
+							<p>{feature.body}</p>
+						</article>
+					))}
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="section__head">
+					<div>
+						<h2>Take the core. The toolbox is the CLI.</h2>
+					</div>
+					<p>
+						<code>libpyle</code> is the embeddable language, with no CLI modules and no heavy
+						dependencies. The <code>pyle</code> binary adds the general-purpose modules on top.
+						If you want those modules inside an embedder, you add their sources and libraries
+						yourself.
+					</p>
+				</div>
+				<div class="layers">
+					<article class="layer">
+						<h3>The embeddable core</h3>
+						<p>
+							Lexer, parser, compiler, stack VM, garbage collector, and the core natives. Drop it
+							into a C++17 project and register only what you need.
+						</p>
+						<ul>
+							<li>Header-only dependencies</li>
+							<li>Builds for wasm32</li>
+							<li>Core modules: os, path, fs, math, color, proc (native)</li>
+							<li>Bind functions, classes, and methods</li>
+						</ul>
+						<div class="layer__code">add_deps("libpyle")</div>
+					</article>
+					<article class="layer">
+						<h3>The batteries-included interpreter</h3>
+						<p>
+							Run scripts standalone. The binary adds the general-purpose modules, their external
+							libraries, the declaration files, and the language server.
+						</p>
+						<ul>
+							<li>json, http, crypto, worker</li>
+							<li>raylib module</li>
+							<li>.d.pyl declarations for editors</li>
+							<li>pyle-lsp for VS Code</li>
+						</ul>
+						<div class="layer__code">pyle script.pyl</div>
+					</article>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="embed">
+					<div class="embed__copy">
+						<h2>From C++ to script in a few lines.</h2>
+						<p>
+							Create a VM, register the core natives, and execute a string or a file. Values move
+							across the boundary, errors become values, and the host stays in control.
+						</p>
+						<a class="button button--ghost" href={`${base}embedding/`}>
+							Read the embedding guide
+						</a>
+					</div>
+					<div class="embed__code">
+						<Highlight code={embedCode} lang="cpp" />
+					</div>
+				</div>
+			</section>
+
+			<section class="section">
+				<div class="playground-cta">
+					<div>
+						<h2>Try the real language in your browser.</h2>
+						<p>
+							The playground is libpyle compiled to WebAssembly. No install, no server round
+							trip. Write a script, hit run, and see what comes back.
+						</p>
+						<a class="button button--primary" href={`${base}playground/`}>
+							Open the playground
+						</a>
+					</div>
+					<div class="terminal" aria-hidden="true">
+						<div class="terminal__bar"><i></i><i></i><i></i><span style="margin-inline-start:auto">playground</span></div>
+						<div class="terminal__body">
+							<div><span class="prompt">$</span> <span class="cmd">run hello.pyl</span></div>
+							<div class="out">Hello from WebAssembly.</div>
+							<div><span class="prompt">$</span> <span class="cmd">run fib.pyl</span></div>
+							<div class="out">fib(10) = 55</div>
+						</div>
+					</div>
+				</div>
+			</section>
+		</div>
+	</div>
+</SiteLayout>

@@ -1,21 +1,40 @@
-# build output
+# Build output
 dist/
-# generated types
 .astro/
 
-# dependencies
+# Dependencies
 node_modules/
 
-# logs
+# Generated WebAssembly artifacts
+wasm/build/
+public/playground/pyle_wasm.js
+public/playground/pyle_wasm.wasm
+public/playground/pyle_wasm.js.map
+public/playground/pyle_wasm.wasm.map
+
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-
-# environment variables
+# Environment
 .env
-.env.production
+.env.*
+!.env.example
 
-# macOS-specific files
+# Scratch and test artifacts
+tmp*
+out.bin
+out.txt
+*.bin
+
+# Editor
+.vscode/
+.idea/
+
+# OS
 .DS_Store
+Thumbs.db
+Desktop.ini

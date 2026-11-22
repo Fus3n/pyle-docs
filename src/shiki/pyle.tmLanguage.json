@@ -1,0 +1,171 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "pyle",
+	"scopeName": "source.pyle",
+	"patterns": [
+		{ "include": "#comments" },
+		{ "include": "#strings" },
+		{ "include": "#function-declaration" },
+		{ "include": "#type-declaration" },
+		{ "include": "#type-annotation" },
+		{ "include": "#keywords" },
+		{ "include": "#builtins" },
+		{ "include": "#operators" },
+		{ "include": "#numbers" },
+		{ "include": "#property-access" },
+		{ "include": "#function-call" }
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.number-sign.pyle",
+					"match": "#.*$"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.double.pyle",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.pyle",
+							"match": "\\\\[nert\\\\\"'0]"
+						}
+					]
+				}
+			]
+		},
+		"function-declaration": {
+			"begin": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(\\s*\\()",
+			"beginCaptures": {
+				"1": { "name": "storage.type.function.pyle" },
+				"2": { "name": "entity.name.function.pyle" },
+				"3": { "name": "punctuation.definition.parameters.begin.pyle" }
+			},
+			"end": "\\)",
+			"endCaptures": {
+				"0": { "name": "punctuation.definition.parameters.end.pyle" }
+			},
+			"patterns": [
+				{
+					"match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*(\\[[^\\]]*\\])?)",
+					"captures": {
+						"1": { "name": "punctuation.separator.type.pyle" },
+						"2": { "name": "storage.type.annotation.pyle" }
+					}
+				},
+				{
+					"match": "(\\|)\\s*([a-zA-Z_][a-zA-Z0-9_]*(\\[[^\\]]*\\])?)",
+					"captures": {
+						"1": { "name": "punctuation.separator.type.pyle" },
+						"2": { "name": "storage.type.annotation.pyle" }
+					}
+				},
+				{
+					"match": "\\?",
+					"name": "punctuation.separator.type.pyle"
+				},
+				{
+					"name": "variable.parameter.function.pyle",
+					"match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+				},
+				{
+					"name": "punctuation.separator.parameters.pyle",
+					"match": ","
+				}
+			]
+		},
+		"type-declaration": {
+			"patterns": [
+				{
+					"match": "\\b(struct|enum)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+					"captures": {
+						"1": { "name": "storage.type.pyle" },
+						"2": { "name": "entity.name.type.struct.pyle" }
+					}
+				}
+			]
+		},
+		"type-annotation": {
+			"match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*(\\[[^\\]]*\\])?(\\s*\\|\\s*[a-zA-Z_][a-zA-Z0-9_]*(\\[[^\\]]*\\])?)*)",
+			"captures": {
+				"1": { "name": "punctuation.separator.type.pyle" },
+				"2": { "name": "storage.type.annotation.pyle" }
+			}
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "storage.type.pyle",
+					"match": "\\b(let)\\b"
+				},
+				{
+					"name": "storage.type.function.pyle",
+					"match": "\\b(fn)\\b"
+				},
+				{
+					"name": "keyword.control.pyle",
+					"match": "\\b(if|else|elif|for|in|while|loop|return|break|continue|yield|or|and|not|enum|static)\\b"
+				},
+				{
+					"name": "variable.language.self.pyle",
+					"match": "\\bself\\b"
+				},
+				{
+					"name": "constant.language.pyle",
+					"match": "\\b(true|false|none)\\b"
+				}
+			]
+		},
+		"builtins": {
+			"patterns": [
+				{
+					"name": "support.function.builtin.pyle",
+					"match": "\\b(print|printf|format|input|import|add_import_path|typeof|tostring|tonum|toint|tofloat|Coro|Bytes|BytesBuilder|File|Future|pcall|assert|raise|print_trace|exit|waitfor)\\b"
+				},
+				{
+					"name": "support.class.builtin.pyle",
+					"match": "\\b(os|path|fs|math|color|json|http|crypto|proc|worker|async)\\b"
+				},
+				{
+					"name": "support.type.primitive.pyle",
+					"match": "\\b(int|float|bool|string|array|map|bytes|bytes_builder|function|struct|range|iterator|coro|future|native_function|native_object|any)\\b"
+				},
+				{
+					"name": "constant.language.pyle",
+					"match": "\\b(PYLE_VERSION|PYLE_GIT_HASH)\\b"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.pyle",
+					"match": "(<<=|>>=|&=|\\|=|\\^=|\\+=|\\-=|\\*=|/=|==|!=|<=|>=|=>|<<|>>|\\+|-|\\*|/|%|=|<|>|&|\\||\\^|~|\\.\\.|!)"
+				},
+				{
+					"name": "punctuation.separator.type.pyle",
+					"match": "\\?"
+				}
+			]
+		},
+		"numbers": {
+			"name": "constant.numeric.pyle",
+			"match": "\\b(0x[0-9a-fA-F]+|\\d+(\\.\\d+)?)\\b"
+		},
+		"property-access": {
+			"match": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_]*\\b(?!\\s*\\()",
+			"name": "variable.other.property.pyle"
+		},
+		"function-call": {
+			"match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+			"captures": {
+				"1": { "name": "entity.name.function.call.pyle" }
+			}
+		}
+	}
+}

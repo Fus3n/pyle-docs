@@ -1,0 +1,1812 @@
+# Pyle Language — Complete Reference for LLMs
+
+> Everything an LLM needs to know to write correct pyle code.
+> If something is not documented here, it likely does not exist in pyle.
+> Source: https://github.com/Fus3n/pyle
+
+---
+
+## 1. Language Overview
+
+Pyle is a dynamically-typed, bytecode-compiled scripting language with C-like syntax shaped by JavaScript, with runtime behavior borrowed from Lua. Designed for embedding into C++ applications with seamless bidirectional function/class binding.
+
+### Two layers: libpyle and pyle
+
+Pyle ships as two separate layers, and it matters which one you are using:
+
+- **`libpyle/` is the embeddable core.** Lexer, parser, compiler, bytecode VM, garbage collector, and the core natives. It pulls in only header-only fmt and unordered_dense, and builds for wasm32. This is what you link into a C++ application; everything an embedder gets by default lives here.
+- **`pyle/` is the interpreter binary and its bundled modules.** The `pyle` CLI plus the batteries-included general-purpose modules. It is a consumer of libpyle, not part of the embeddable core.
+
+Modules are not all equal:
+
+| Layer | Modules | Notes |
+|-------|---------|-------|
+| Core (in `libpyle`, registered by default) | `os`, `path`, `fs`, `color`, `math`, `proc` | `proc` only when process support is compiled in (`PYLE_HAS_PROCESS`). The built-in types (array, map, string, bytes, `BytesBuilder`, `File`, `Coro`, `Future`, `Iterator`, `Range`) are part of the core, not modules. |
+| Bundled with the interpreter (`pyle/`) | `json`, `crypto`, `http` | General purpose, but **not** in the embeddable core. An embedder linking only libpyle does not have them unless it registers them. |
+| External module | `raylib` | A separate binding compiled on its own (`--with_raylib`). Not core, not loaded by default, and unavailable unless explicitly built. |
+
+When this reference calls something "core", it is in libpyle and available to every embedder. `http`, `json`, `crypto`, and `raylib` are **not** core: the first three ship with the `pyle` interpreter, and `raylib` additionally requires a separate build.
+
+**No ternary operator.** No switch/case. No list comprehensions. No walrus operator. No decorators. No try/catch. No generator expressions. No with statement. No `__dunder__` methods (use named special methods like `_init`, `_add`). No `for` with range() function (use `start..end` range literal). No lambda keyword (use `fn`). No `+= 1` shorthand for increment (but `+=`, `-=`, `*=`, `/=` work). No `break` with label. No `is` keyword. No `del`. No `pass`. No docstrings. No f-strings (use `format()`). No `in` operator for containment tests (only used in `for x in iterable`). No `not in`. No subscript assignment with slice (`arr[1:3] = ...`). No multiple inheritance. No interfaces. No abstract classes. No `@dataclass`. No `@staticmethod` decorator (use `static fn`). No `@property` (use struct getters/setters via C++ binding). No global/nonlocal keywords. No exception hierarchy. No `__init__` (use `_init`). No ellipsis `...`. No runtime-enforced type hints (annotations accepted everywhere but ignored — see Type Hints). No `match`/`case`. No `await` keyword (use `waitfor`). No `async fn` (any function can call `waitfor`).
+
+---
+
+## 2. Syntax Conventions
+
+- **Comments**: `#` line-only. No block comments.
+- **Statements end** at newline OR semicolon `;` OR closing brace `}`.
+- **Single-line blocks**: `if a > 5 print("hello")` — no braces needed for single-statement bodies.
+- **Multi-line blocks**: `if a > 5 { print("a"); print("b") }` — braces or just indent with newlines.
+- **Strings**: double-quoted only: `"hello"`. No single-quoted strings.
+- **Escape sequences**: `\n` (newline), `\e` (escape), `\t` (tab), `\r` (CR), `\\`, `\"`, `\'`, `\0` (null).
+- **No implicit string concatenation**: `"a" "b"` is an error. Use `"a" + "b"`.
+- **Identifiers**: start with letter or `_`, then alphanumeric + `_`. Case-sensitive. Keywords are reserved lowercase.
+- **Integers**: decimal (`42`) or hex (`0xFF`). 64-bit signed.
+- **Floats**: must have `.` followed by digit: `3.14`. `1.` is parsed as `1 .` (int dot). `1.0` is fine.
+- **Booleans**: `true`, `false`.
+- **None**: `none`.
+
+---
+
+## 3. Variables and Assignment
+
+```pyle
+let x                   # declares x = none
+let x = 5               # declares and initializes
+x = 10                  # reassigns (no `let` on reassignment)
+x += 1                  # compound assign (+=, -=, *=, /=)
+x = x + 1               # also valid (no ++)
+```
+
+- `let` is required for declaration. No implicit globals.
+- Scope: block-scoped (inside `{}` or function body). Global if at module top-level.
+
+---
+
+## 4. Literals and Types
+
+| Literal | Type | Notes |
+|---------|------|-------|
+| `42` | `Int` | 64-bit signed |
+| `0xFF` | `Int` | Hex |
+| `3.14` | `Float` | Double precision |
+| `true`, `false` | `Bool` | |
+| `none` | `None` | Null value |
+| `"hello"` | `String` | Interned, immutable |
+| `[1, 2, 3]` | `Array` | Heterogeneous, resizable |
+| `{a: 1, "b": 2}` | `Map` | Keys can be strings, ints, etc. |
+| `1..10` | `Range` | Exclusive end (`1..10` yields 1-9) |
+| `fn(x, y) x + y` | `Function` | Lambda |
+| `struct P(x, y) {}` | `StructType` | Type definition |
+
+---
+
+## 5. Operators (Precedence low→high)
+
+| Level | Operators | Assoc | Notes |
+|-------|-----------|-------|-------|
+| 0 | `=`, `+=`, `-=`, `*=`, `/=`, `&=`, `\|=`, `^=`, `<<=`, `>>=` | Right | Assignment |
+| 1 | `or` | Left | Short-circuit |
+| 2 | `and` | Left | Short-circuit |
+| 3 | `==`, `!=` | Left | Equality |
+| 4 | `<`, `<=`, `>`, `>=` | Left | Comparison |
+| 4.5 | `..` | Left | Range literal |
+| 4.6 | `\|` | Left | Bitwise or |
+| 4.7 | `^` | Left | Bitwise xor |
+| 4.8 | `&` | Left | Bitwise and |
+| 4.9 | `<<`, `>>` | Left | Shift |
+| 5 | `+`, `-` | Left | Term |
+| 6 | `*`, `/`, `%` | Left | Factor |
+| 7 | `not`, `-`, `+`, `~` | Right | Unary |
+| 8 | `f()`, `f(k:v)`, `o.m()`, `o.f`, `a[i]` | Left | Call/access |
+
+- `!` is NOT a logical NOT operator. Use `not`.
+- Bitwise operators are `&`, `|`, `^`, `~`, `<<`, `>>` (int only, see Operators in Detail).
+- `**` does NOT exist. Use `math.pow()`.
+- `//` does NOT exist (no integer division).
+
+---
+
+## 6. Control Flow
+
+```pyle
+# If / elif / else
+if condition { body }
+if condition body                    # single-statement
+
+if a > 5 {
+    print("big")
+} elif a > 2 {                       # parser sugar for else { if ... }
+    print("medium")
+} else {
+    print("small")
+}
+
+# While
+while condition { body }
+
+# Loop (infinite)
+loop { body }                        # desugars to while true
+
+# Break (while, for, loop only)
+while true {
+    if done { break }
+}
+
+# Continue (while, for, loop only)
+while condition {
+    if skip_rest { continue }
+}
+
+# For-in (iterates arrays, ranges, strings, bytes)
+for x in [1, 2, 3] { print(x) }
+for i in 1..10 { print(i) }          # yields 1, 2, ..., 9
+for c in "hello" { print(c) }        # iterates bytes (one-byte strings)
+for b in Bytes([65, 66]) { print(b) } # iterates byte values (0-255)
+for k in some_map.keys() { print(k) } # maps are NOT directly iterable; iterate keys()/values()
+
+# No `else` on loops.
+```
+
+---
+
+## 7. Functions
+
+```pyle
+# Named function
+fn add(a, b) {
+    return a + b
+}
+
+# Single-expression body (implicit return)
+fn double(x) => x * 2
+
+# Return is optional (defaults to none)
+fn greet(name) {
+    print("Hello, " + name)
+}
+
+# Nested function with closure
+fn make_counter() {
+    let x = 0
+    fn count() {
+        x += 1
+        return x
+    }
+    return count
+}
+
+# Recursion
+fn fib(n) {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+```
+
+- Functions are first-class: stored in arrays, passed as args, returned.
+- **Max 255 parameters**.
+- All functions are closures — they capture surrounding variables by reference.
+- Functions defined at module top-level are global functions.
+- Functions can be defined inside other functions (nested closures).
+- Functions can be defined inside structs as methods.
+
+---
+
+## 8. Structs (Classes)
+
+```pyle
+struct Pos(x, y) {}
+
+struct Player(name, health, pos, _secret) {
+    fn _init(n) {                    # constructor (runs after default init)
+        self.name = n
+        self.health = 100
+        self.pos = Pos(x: 0, y: 0)
+    }
+
+    fn take_damage(amount) {         # instance method
+        self.health -= amount
+    }
+
+    fn status() {                    # returns string
+        return format("Name: {}", self.name)
+    }
+
+    fn _private_fn() { }             # private (self-only access)
+
+    static fn spawn(x, y) {          # static method (no self)
+        return Player("bot", 100, Pos(x: x, y: y))
+    }
+}
+```
+
+### Rules
+
+- All fields MUST be declared in the struct header: `struct Name(field1, field2)`.
+- Shape is FIXED. No adding fields after construction.
+- `_init` is the constructor. Runs after default field init.
+- `_init` auto-returns `self`. Explicit `return self` is fine. `return expr` is ignored unless `expr` is `self`.
+- Fields/methods starting with `_` are **private**: only accessible through `self.` inside the struct.
+- Instance methods receive `self` as first parameter automatically (not declared in parameter list).
+- `static fn` methods do NOT receive `self`. Called as `Player.spawn(x, y)`.
+- Constructors can take positional or keyword args:
+  ```pyle
+  Pos(5, 10)                 # positional
+  Pos(x: 5, y: 10)           # keyword (any order)
+  Player(name: "Art", n: 5)  # but _init still receives the same params
+  ```
+- A struct without `_init` acts as a data-only struct (like a dataclass).
+
+### Special Methods (operator overloading — WORK IN PROGRESS, not wired up yet)
+
+| Method | Operator | Signature |
+|--------|----------|-----------|
+| `_init` | Constructor | `fn _init(args...)` |
+| `_str` | To string | `fn _str()` |
+| `_add` | `+` | `fn _add(other)` |
+| `_sub` | `-` | `fn _sub(other)` |
+| `_mul` | `*` | `fn _mul(other)` |
+| `_div` | `/` | `fn _div(other)` |
+| `_eq` | `==` | `fn _eq(other)` |
+
+- Only `_init` is currently honored. Defining `_add`/`_eq`/etc. has no effect yet: `+`/`==` on structs raise `TypeError`.
+
+---
+
+## 9. Enums
+
+```pyle
+enum Direction { NORTH, SOUTH, EAST, WEST }
+# desugars to: let Direction = {"NORTH": 0, "SOUTH": 1, "EAST": 2, "WEST": 3}
+
+enum Status { OK, ERROR = 5, TIMEOUT }
+# desugars to: let Status = {"OK": 0, "ERROR": 5, "TIMEOUT": 6}
+
+print(Direction.NORTH)   # 0
+```
+
+- An enum is a map literal bound to a name: member names are implicit strings (auto-quoted identifiers), member values are expressions.
+- Values auto-increment from 0 only while the previous explicit value was an integer literal. An integer initializer resets the counter (`OK, ERROR = 5, TIMEOUT` gives `0, 5, 6`).
+- Values may be non-integers: `enum E { A = "x" }` is valid. A non-integer initializer stops the counter, so the next member must carry an explicit initializer or it is a compile error (`enum G { A = "x", B }` fails).
+- Access members like a map: `Direction.NORTH` or `Direction["NORTH"]`.
+
+---
+
+## 10. Imports
+
+```pyle
+# Import native module
+let os = import("os")
+let m = import("math")
+
+# Import .pyl file (with or without .pyl extension)
+let cfg = import("examples/raylib/suika/cfg")
+
+# Access exported symbols
+let Cfg = cfg.Cfg
+os.time()
+```
+
+- `import()` is a function, not a keyword.
+- Returns a module map. Discarding the return is allowed.
+- Native modules registered via `register_module()` are found first.
+- `.pyl` files are searched in the filesystem relative to CWD and import paths.
+- **Path may omit `.pyl` extension**: `import("cfg")` and `import("cfg.pyl")` both work.
+- **Full or relative file paths** are accepted: `import("examples/raylib/suika/cfg")`, `import("C:/projects/mylib.pyl")`.
+- `add_import_path("path")` adds directories to the search path.
+- Modules are cached: subsequent `import("same")` returns the cached map.
+- Each module has its own globals: functions and closures defined in a module resolve that module's globals, not the importer's.
+- Cycles: if module A imports B which imports A, B gets A's partial state.
+
+---
+
+## 11. Coroutines and Async
+
+```pyle
+# Create a coroutine from a function
+let c = Coro(my_func)
+c.resume()                # run until yield or return
+print(c.state())           # "suspended", "running", or "dead"
+
+# Yield suspends execution
+fn my_task() {
+    print("start")
+    yield                  # suspend, return none to resumer
+    print("resumed")
+    yield 42               # suspend, return 42 to resumer
+    print("done")
+}
+```
+
+### Prelude Async Helpers (defined in built-in prelude)
+
+```pyle
+# waitfor: yield until a Future completes
+fn main() {
+    let result = waitfor(os.sleep_async(1000))
+    print("done")
+}
+async.run(main)
+
+# async.run: run a function or coroutine to completion
+async.run(main)
+async.run(Coro(main))    # also works
+
+# async.all: run multiple tasks concurrently
+fn task_a() {
+    waitfor(os.sleep_async(1000))
+}
+fn task_b() {
+    waitfor(os.sleep_async(1000))
+}
+fn main() {
+    async.all([task_a, task_b])    # ~1s total, not 2s
+}
+async.run(main)
+```
+
+- `waitfor` yields the current coroutine until the Future's `is_done` property is true.
+- `async.run` drives the coroutine loop. Functions that call `waitfor` MUST be run via `async.run` or `async.all`.
+- `async.all` does round-robin: resumes each coroutine once per loop iteration until all are dead.
+- `os.sleep_async(ms)` returns a Future that resolves after `ms` milliseconds on a background thread.
+- The built-in `Future` type: `Future()`, `.is_done`, `.has_failed`, `.is_cancelled`, `.data`, `.error`, `.resolve(val)`, `.reject(err)`, `.cancel()`.
+
+---
+
+## 12. Built-in Functions (Global)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `print(...)` | `(...)` | Print space-separated, newline-terminated |
+| `printf(fmt, ...)` | `(string, ...)` | Formatted print, {fmt} syntax (see Format Strings) |
+| `format(fmt, ...)` | `(string, ...) -> string` | Return formatted string, {fmt} syntax (see Format Strings) |
+| `input(prompt?)` | `(string?) -> string` | Read line from stdin |
+| `import(name)` | `(string) -> Map` | Import module |
+| `add_import_path(path)` | `(string)` | Add module search directory |
+| `typeof(v)` | `(any) -> string` | Returns type name: `"int"`, `"float"`, `"string"`, `"array"`, `"map"`, `"function"`, `"none"`, `"bool"`, `"struct"`, `"range"`, `"bytes"`, `"bytes_builder"`, `"iterator"`, `"native_function"`, `"coro"`, native class name (`"File"`, `"Server"`, …) or `"native_object"`. A struct type (the value of `P` in `struct P`) has no name case, so `typeof(P)` returns `"HeapRef(n)"` while `tostring(P)` returns `"struct {fields}"`. |
+| `tostring(v)` | `(any) -> string` | Display string, same as `print`/`format` shows. Bytes: `<bytes N>`; bytes builder: `<bytes_builder size=N>`; coro: `<coro>`; native function: `<native_function>`; closure: `<function name at 0x...>`. Struct instances: `{field: value, ...}`; struct types: `struct {fields}`. Floats use default stream formatting, so `1.0` displays as `"1"` and `1e20` as `"1e+20"`. Self-referential arrays print `[heap_idx]`; self-referential maps and structs print `{...}`. |
+| `tonum(v)` | `(any) -> int \| float \| none` | Numbers pass through, strings/bytes parse (same rules as `string.to_num`), everything else is none. Strict: the whole text must parse (`"2/13"` is none, not 2). |
+| `toint(v)` | `(any) -> int \| none` | Truncates floats toward zero, strict integer strings only (`"3.9"` is none), bytes decode first |
+| `tofloat(v)` | `(any) -> float \| none` | Ints widen, strings parse, bytes decode first |
+| `Coro(fn)` | `(function) -> Coro` | Wrap function into coroutine |
+| `Bytes(array)` | `([int]) -> Bytes` | Create byte buffer from int array |
+| `BytesBuilder()` | `(int?) -> BytesBuilder` | Create a mutable byte writer (write-only; `.to_bytes()` moves into Bytes) |
+| `waitfor(future)` | `(Future) -> any` | Yield until future completes; raises `FutureRejected` if the future was rejected |
+| `async.run(t)` | `(fn/Coro) -> any` | Run coroutine to completion; a failed task's trace prints once at the escalation point (`async.run` re-raises, `waitfor` raises `FutureRejected`). `async.all` collects per-task `{ok, value/error}` without printing. |
+| `async.all(tasks)` | `([fn/Coro]) -> [{ok, value|error}]` | Run tasks concurrently; each result is `{ok: true, value}` or `{ok: false, error}` |
+| `pcall(fn, args...)` | `(function, ...) -> Map` | Call fn under a catch checkpoint. Returns `{ok: true, value}` on success or `{ok: false, error}` on panic. `error` is `{type, message, trace}` where `trace` is `[{function, file, line}]` (outermost first, `__call_trampoline` frames omitted). Catches runtime panics from Pyle functions and native functions (plain struct construction is not catchable). Yield inside pcall works when the callee has a coroutine caller (transparent suspend/resume, `value` is the final result); at top level with no caller it yields a caught `RuntimeError`. Nested pcall works (innermost catches first). Success path costs a checkpoint push/pop only; traces build on the error path. Editor: result fields complete automatically; annotate `let r: PCallResult` when the shape is not inferable (e.g. passed through another function). |
+| `assert(cond, msg?)` | `(any, string?) -> any` | Return cond if truthy, else raise `AssertionError` (catchable by pcall, otherwise panics). |
+| `print_trace(err)` | `(Map) -> none` | Print a pcall result or error map using the runtime error format (frames, snippet, hint). Tolerates malformed input. |
+| `raise(err)` | `(Map/string) -> none` | Re-raise an error map (or message string) with its trace preserved. A map needs `type`/`message`/`trace`; anything else is a `TypeError`. Uncaught, it takes the normal panic path. |
+| `PYLE_VERSION` | `(string constant)` | Running interpreter version, e.g. `"0.2.0"`. |
+| `exit(code?)` | `(int?) -> none` | Exit the process with optional exit code (default 0). |
+
+---
+
+## 13. Built-in Types and Their Methods
+
+### String Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `.size()` | `() -> int` | Byte count (strings are byte strings) |
+| `.to_num()` | `() -> int/float/none` | Parse number, return none on fail |
+| `.slice(start, end)` | `(int, int) -> string` | Substring. `start` is clamped to 0, `end` to the length; `start >= end` gives `""` |
+| `.slice(range)` | `(Range) -> string` | Substring from range (range end is exclusive) |
+| `.is_digit()` | `() -> bool` | All bytes are ASCII digits |
+| `.is_alpha()` | `() -> bool` | All bytes are ASCII alphabetic |
+| `.is_alnum()` | `() -> bool` | All bytes are ASCII alphanumeric |
+| `.is_space()` | `() -> bool` | All bytes are ASCII whitespace |
+| `.join(array)` | `([any]) -> string` | Join array with this string as delimiter; elements are converted with the display string |
+| `.split(delim)` | `(string) -> [string]` | Split by delimiter; an empty delimiter splits into single-byte strings |
+| `.lower()` | `() -> string` | Lowercase copy |
+| `.upper()` | `() -> string` | Uppercase copy |
+| `.to_bytes()` | `() -> Bytes` | Raw byte copy of string |
+| `.trim()` | `() -> string` | Strip leading/trailing whitespace |
+| `.contains(sub)` | `(string) -> bool` | True if sub occurs in string |
+| `.starts_with(prefix)` | `(string) -> bool` | True if string starts with prefix |
+| `.ends_with(suffix)` | `(string) -> bool` | True if string ends with suffix |
+| `.replace(old, new)` | `(string, string) -> string` | Replace all non-overlapping occurrences (empty `old` returns original) |
+
+- Strings are byte strings: `size()` counts bytes, indexing returns a one-byte string, `for c in s` iterates bytes, and `split("")` splits into bytes. Multibyte UTF-8 is not character-aware: `"é".size()` is 2 and iterating it yields two one-byte strings.
+- String indexing: `"hello"[0]` returns `"h"`. Out of bounds is a runtime error.
+- String concatenation: `"a" + "b"` returns `"ab"`.
+- String repetition: No `*` operator.
+- Slice clamping is shared with arrays: negative `start` becomes 0, `end` is clamped to the length, and `start >= end` yields an empty result. `"hello".slice(1, -1)` is `""`.
+
+### Array Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `.append(value)` | `(any)` | Add to end |
+| `.size()` | `() -> int` | Element count |
+| `.pop()` | `() -> any` | Remove and return last element |
+| `.reverse()` | `()` | Reverse in-place |
+| `.slice(start, end)` | `(int, int) -> [any]` | New sub-array |
+| `.slice(range)` | `(Range) -> [any]` | New sub-array from range |
+| `.clear()` | `()` | Remove all elements |
+| `.reserve(cap)` | `(int)` | Pre-allocate capacity; negative raises `ArgumentError` |
+| `.resize(n, default?)` | `(int, any?)` | Resize, fill new slots with default (or none); negative raises `ArgumentError` |
+| `.map(fn)` | `(function) -> [any]` | New array with fn applied to each element |
+| `.filter(fn)` | `(function) -> [any]` | New array with elements where fn returns truthy |
+| `.find(fn)` | `(function) -> any/none` | First element where fn returns truthy, or none |
+| `.index_of(value)` | `(any) -> int/none` | Index of first element equal (same semantics as `==`) to value, or none |
+
+- `map`/`filter`/`find` callbacks take exactly 1 argument (the element). Truthiness follows `none`/`false`/`0`/`0.0` = falsy.
+- A callback runtime error aborts the method and propagates.
+
+- Array indexing: `arr[0]`. Out of bounds is a runtime error.
+- Array index assignment: `arr[0] = val`.
+- Negative indices: No. Use `arr[arr.size() - 1]`.
+- `array.pop()` on an empty array raises `IndexError`.
+- Slicing: `arr.slice(1, 3)` or `arr.slice(1..3)`. Same clamping as strings: negative `start` becomes 0, `end` is clamped to `size()`, `start >= end` gives `[]`.
+
+### Map Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `.size()` | `() -> int` | Entry count |
+| `.remove(key)` | `(any) -> any` | Remove key, return value (or none if missing) |
+| `.keys()` | `() -> [any]` | Array of all keys |
+| `.values()` | `() -> [any]` | Array of all values |
+| `.has(key)` | `(any) -> bool` | Key existence check |
+| `.clear()` | `()` | Remove all entries |
+
+- Map access: `map["key"]`, `map[key_var]`. Missing key via brackets is a runtime error (`IndexError`); missing key via dot access (`map.key`) returns `none`.
+- Map assignment: `map["key"] = val`. Dot assignment also works: `map.key = val` (writes the data key; builtin methods like `map.size()` are unaffected and still callable).
+- Map literals: `{key: val}` where bare `key` is auto-quoted as implicit string.
+- Computed keys: `{expr: val}` — expr is evaluated.
+- Unhashable keys: arrays, maps, struct instances, and `BytesBuilder` cannot be keys (`TypeError: Unhashable type ...`). Other reference keys compare by identity.
+
+### Bytes Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `.size()` | `() -> int` | Byte count |
+| `.to_string()` | `() -> string` | Raw byte-preserving copy into a string (no UTF-8 validation — you re-interpret the bytes yourself) |
+| `.to_int_le()` | `() -> int` | int64 little-endian read; needs exactly 8 bytes, `ArgumentError` otherwise |
+| `.to_int_be()` | `() -> int` | int64 big-endian read; needs exactly 8 bytes, `ArgumentError` otherwise |
+| `.to_float_le()` | `() -> float` | float64 (IEEE 754) little-endian read; needs exactly 8 bytes, `ArgumentError` otherwise |
+| `.to_float_be()` | `() -> float` | float64 (IEEE 754) big-endian read; needs exactly 8 bytes, `ArgumentError` otherwise |
+
+- Bytes indexing: `b[0]` returns the byte value as `int` (0-255). Out of bounds is a runtime error.
+- Byte values are validated: `Bytes([300])` and `Bytes([-1])` raise `RuntimeError`; `BytesBuilder.push(300)` raises `ArgumentError`.
+
+### BytesBuilder Methods
+
+`BytesBuilder()` creates a mutable byte writer (optional int capacity argument, `BytesBuilder(1024)`). It is write-mostly — there is no indexed access; the only way to read content is `.to_bytes()` (which moves it out and empties the builder, reusable) or `.to_string()` (a raw byte-preserving copy into a string; builder is unchanged). All methods return the new size except `.reserve` (returns capacity) and `.to_bytes` (returns bytes). Construct with `BytesBuilder()` as a global.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `.push(b)` | `(int) -> int` | Append one byte (0-255); return size |
+| `.extend_array(arr)` | `(array[int]) -> int` | Append packed bytes from int array; return size |
+| `.reserve(n)` | `(int) -> int` | Ensure capacity for n bytes; returns capacity |
+| `.size()` | `() -> int` | Current byte count |
+| `.to_string()` | `() -> string` | Raw byte-preserving copy into a string; builder is not emptied or modified |
+| `.to_bytes()` | `() -> bytes` | Move built bytes into immutable Bytes; builder is emptied (can reuse) |
+
+```pyle
+let b = BytesBuilder()
+b.push(72)
+b.extend_array([101, 108, 108, 111])
+let packed: bytes = b.to_bytes()   # "Hello"
+```
+
+Peak memory tip: to emit many small payloads, prefer collecting an `array` of ints and one `bytes_builder.extend_array(chunk)` per chunk — one native call per chunk instead of one per byte.
+
+### Type Conversions
+
+- There are NO `int()`/`float()` functions — `int`, `float`, `bool`, `string`, `array`, `map`, `bytes` are type-name string constants (usable as `typeof(x) == int`).
+- String to number: `"12".to_num()` → `12`, `"3.5".to_num()` → `3.5`, unparseable → `none`.
+- Float to int: `math.trunc(x)`, `math.floor(x)`, `math.round(x)`, `math.ceil(x)` (all return int).
+
+### File Type (via `File.open`)
+
+```pyle
+let f = File.open("path", "r")    # modes: r, w, a, rb, wb, ab
+f.read_line()                      # reads one line, returns none at EOF
+f.read_all()                       # reads all remaining content
+f.write(text)                      # write string
+f.read_bytes(count?)               # read up to count bytes (or all)
+f.write_bytes(Bytes([...]))        # write bytes
+f.seek(offset, origin)             # origin: 0=SET, 1=CUR, 2=END
+f.tell()                           # current position
+f.close()                          # close
+f.size()                           # file size
+
+# Async variants (return Future):
+f.read_line_async()
+f.read_all_async()
+f.write_async(text)
+f.read_bytes_async(count?)
+f.write_bytes_async(Bytes([...]))
+```
+
+### Future Type
+
+```pyle
+let ft = Future()
+ft.resolve(value)                  # resolve with value
+ft.reject("error msg")             # reject with error
+ft.set_cancel_hook(fn() { ... })   # register what cancel() should do (Pyle-level producers)
+ft.cancel()                        # best-effort cancel; returns bool (false if no hook / already done)
+# Properties (read-only):
+ft.is_done                         # bool
+ft.has_failed                      # bool
+ft.is_cancelled                    # bool
+ft.data                            # resolved value
+ft.error                           # error string
+```
+
+### Coro Type
+
+```pyle
+let c = Coro(my_fn)
+c.resume(arg?)                     # resume coroutine, optionally pass value as yield result
+c.state()                          # "suspended", "running", "dead"
+c.error()                          # none, or {type, message, trace} if the task died by panic
+```
+
+---
+
+## 14. Built-in Modules
+
+> Which layer each module lives in: `os`, `path`, `fs`, `color`, `math`, `proc` are core (in `libpyle`, available to every embedder). `json`, `http`, `crypto` ship with the `pyle` interpreter only. `raylib` is an external module built separately. See "Two layers: libpyle and pyle" in the overview.
+
+### `os` Module
+
+```pyle
+let os = import("os")
+os.time()                          # float seconds, monotonic interval clock (NOT wall time; epoch differs per platform, use for durations only)
+os.epoch()                         # int unix seconds (wall time)
+os.args                              # [string] variable, CLI args after the script path (extras only, no script name; use os.script_path() for that). Positional rule: flags before the script belong to pyle (-d, --version, --help), everything after it goes to the script verbatim, even -d/--version. `--` before the script forces positional parsing.
+os.script_path()                    # path of the running script as invoked (empty when none)
+os.script_dir()                     # directory of the running script; "." when it has no directory
+os.date()                          # local time "YYYY-MM-DD HH:MM:SS"
+os.strftime(fmt, t?)               # strftime format, t = epoch seconds (default now)
+os.strptime(date, fmt)             # epoch int from date string, strftime codes; raises on mismatch
+os.parse_date(s)                   # auto-detect common shapes, returns Date struct (strict fields, typo raises NameError)
+os.localtime(epoch)                # Date struct in local time
+os.gmtime(epoch)                   # Date struct in UTC
+os.timezone()                      # int seconds offset of local time from UTC (positive east)
+os.clock()                          # float CPU seconds used by the process
+os.difftime(t2, t1)                # float seconds, t2 - t1
+os.system("cmd")                   # run shell command, returns exit code
+os.getenv("NAME")                  # string value, or none if unset
+os.setenv("NAME", "value")         # set a process env var, bool ok
+os.unsetenv("NAME")                # remove a process env var, bool ok
+os.environ()                       # map of all env vars
+os.cwd()                            # current working directory, or none if unavailable
+os.chdir("path")                   # change working directory, bool ok
+os.home()                          # user home directory, or none if unavailable
+os.tempdir()                       # system temp directory, or none if unavailable
+os.tmpname()                       # create and return a unique temp file path
+os.pid()                           # current process id, int
+os.platform()                      # "windows" / "linux" / "macos" / "unknown"
+os.arch()                          # "x86_64" / "aarch64" / "x86" / "unknown"
+os.hostname()                      # machine name, or none if unavailable
+os.username()                      # current user name, or none if unavailable
+os.sleep(ms)                       # block thread for ms
+os.sleep_async(ms)                 # return Future, resolves after ms
+os.cpu_count()                     # logical cores, int
+os.spawn_worker(script, args?)      # spawn worker pyle.exe, returns Worker (only ever a Pyle worker, never an arbitrary executable)
+os.is_worker()                     # true inside a spawned worker
+os.worker_args()                   # spawn args array (worker side)
+os.worker_send(msg)                # worker -> parent string, bool ok
+os.worker_recv(timeout_ms?)        # parent -> worker string, none on timeout
+let p = os.spawn_worker("worker.pyl", ["id-0"])
+p.pid()                            # int
+p.send(msg)                        # parent -> worker string, bool ok
+p.recv(timeout_ms?)                # worker -> parent string, none on timeout
+p.recv_async()                     # Future, resolves to string
+p.alive()                          # bool
+p.wait()                           # block for exit, returns exit code
+p.kill()                           # SIGTERM / TerminateProcess, bool
+```
+
+- `parse_date` tries `%Y-%m-%d %H:%M:%S`, `%Y-%m-%d`, `%m/%d/%Y`, `%m-%d-%Y`, `%b %d, %Y`, `%B %d, %Y` in order (month-first for ambiguous numerics: `10/11/2026` is Oct 11). Returns a strict `Date` struct `{year, month, day, hour, min, sec, epoch}`; unknown fields raise `NameError` (unlike maps, which yield none). Bare weekday names and impossible dates are rejected.
+- Worker channel: length-prefixed string frames over two pipes, max 64 MiB per frame. `Worker.send` and `os.worker_send` take a string, so serialize structured data (JSON) yourself. `recv` returns `none` on timeout or EOF. The child's normal stdout is not the channel.
+
+### `path` Module (pure string operations, zero syscalls)
+
+```pyle
+let path = import("path")
+path.join("a", "b", "c")           # "a/b/c" (platform separator)
+path.basename("/a/b/c.txt")        # "c.txt"
+path.dirname("/a/b/c.txt")         # "/a/b"
+path.extension("/a/b/c.txt")        # ".txt"
+path.stem("/a/b/c.txt")            # "c"
+path.normalize("a//b/../c")        # "a/c"
+path.absolute("foo/bar")           # absolute path
+path.is_absolute("/a")             # bool
+path.sep                           # platform separator string
+```
+
+### `fs` Module (file system operations)
+
+```pyle
+let fs = import("fs")
+fs.exists("path")                  # bool
+fs.is_file("path")                 # bool
+fs.is_dir("path")                  # bool
+fs.remove("path")                  # bool success (raises on failure)
+fs.remove_all("path")              # bool success, recursive delete
+fs.mkdir("path")                   # create dirs (parents too), bool success
+fs.listdir("path")                 # sorted [names], raises if not a directory
+fs.walk("path", recursive?)        # yields paths (async iterator)
+fs.glob("pattern")                 # sorted [paths] matching glob pattern
+fs.rename(src, dst)                # bool success
+fs.copy(src, dst)                  # bool success
+fs.file_size("path")               # int bytes, none if missing
+fs.modified("path")                # float mtime (epoch), none if missing
+fs.read_file("path")               # string content, raises if missing
+fs.write_file("path", "content")   # bool success
+fs.append_file("path", "content")  # bool success
+```
+
+### `worker` Module (multi-process pool over `os.spawn_worker`, bundled with the interpreter)
+
+`std/worker.pyl`, importable as `import("worker")` because the interpreter adds `std/` to the import path. It is written in Pyle and depends on `json`, so a bare libpyle embedder does not get it unless `json` is registered.
+
+```pyle
+let worker = import("worker")
+
+let pool = worker.start("worker.pyl", 4, [])   # spawn N workers, returns Pool
+let out = pool.map(tasks, 5000)                # JSON scatter/gather, array of results
+let codes = pool.stop()                        # kill + wait codes
+# worker.pyl: worker.serve(fn(task) { ... }, -1)
+```
+
+- `worker.start(script, count, args) -> Pool`
+- `Pool.size() -> int`
+- `Pool.map(tasks, timeout_ms) -> array`: sends each task with `json.stringify`, reads replies in waves of pool size, parses with `json.parse`. A timed-out reply becomes `none`.
+- `Pool.stop() -> array[int]`: kills each worker and returns wait codes.
+- `worker.serve(handler, timeout_ms) -> bool`: worker-side loop; parses each request, calls `handler`, stringifies the result. Returns `false` on receive timeout.
+
+### `proc` Module (spawn arbitrary programs, pipes, capture)
+
+```pyle
+let proc = import("proc")
+let r = proc.run("git", ["--version"])          # {code: int?, stdout: bytes, stderr: bytes, timed_out: bool}
+r.code                                          # exit code, none when killed on timeout (signal death is negative: -9)
+r.stdout.to_string()                            # decode bytes to string
+let r2 = proc.run("cat", [], {stdin: "hi\n"})   # feed stdin, closes it, captures output
+let r3 = proc.run("sleep", ["5"], {timeout_ms: 500})  # kill after timeout, timed_out true, partial output kept
+let c = proc.popen("python", ["-i"])            # interactive child, returns Child
+c.pid()                                         # int
+c.alive()                                       # bool
+c.poll()                                        # exit code, none while running
+c.wait(timeout_ms?)                             # block for exit, none on timeout
+c.stdin_write("data")                           # string or bytes, bool ok
+c.stdin_close()                                 # bool, child sees EOF
+c.stdout_read(max_bytes?, timeout_ms?)          # bytes?, none on timeout, empty bytes on EOF
+c.stderr_read(max_bytes?, timeout_ms?)          # same for stderr
+c.communicate(input?, timeout_ms?)              # write input, close stdin, drain both streams, wait; deadlock-free
+c.terminate()                                   # SIGTERM, bool
+c.kill()                                        # SIGKILL, bool
+let f = proc.run_async("git", ["fetch"])        # Future resolving to the run result map
+f.cancel()                                      # kills the child, bool
+```
+
+- Options map keys: `cwd` (string), `env` (map merged over parent, none value removes a var), `clear_env` (bool start empty), `stdin` (string or bytes, run only), `timeout_ms` (int, run only, -1 waits forever).
+- No shell is spawned: `proc.run(program, args)` execs directly with PATH search. For shell features spawn the shell itself (`cmd` / `sh`) over `popen` and write commands to its stdin; poll `stdout_read(chunk, 0)` per frame for a terminal widget.
+- Result shape is always `{code, stdout, stderr, timed_out}`; `run` and `communicate` drain stdout/stderr on threads so large output never deadlocks.
+- Embedders pick modules a la carte: `register_proc_module(vm)` alone, or `register_core_natives(vm, false)` to skip the `os/path/fs/color/math/proc` bundle. Unregistered modules fail `import` with `NameError`.
+
+### `math` Module
+
+```pyle
+let m = import("math")
+m.PI, m.TAU, m.E                   # constants
+m.sqrt(x), m.cbrt(x)               # roots
+m.exp(x), m.log(x), m.log2(x), m.log10(x)
+m.sin(x), m.cos(x), m.tan(x)       # trig (radians)
+m.asin(x), m.acos(x), m.atan(x)
+m.sinh(x), m.cosh(x), m.tanh(x)
+m.radians(d), m.degrees(r)         # conversion
+m.floor(x), m.ceil(x), m.round(x), m.trunc(x)  # returns int; round is half away from zero (2.5 -> 3, -2.5 -> -3)
+m.sign(x)                          # -1, 0, or 1 (returns int)
+m.pow(b, e)                        # b^e
+m.atan2(y, x), m.hypot(x, y)
+m.abs(x)                           # preserves int/float type
+m.min(a, b), m.max(a, b)
+m.clamp(v, lo, hi)                 # clamp value between lo and hi
+```
+
+### `color` Module (ANSI terminal colors)
+```pyle
+let c = import("color")
+print(c.red + "red text" + c.reset)
+print(c.bold + c.green + "bold green" + c.reset)
+```
+
+Keys: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `gray`, `bright_red`, `bright_green`, `bright_yellow`, `bright_blue`, `bright_magenta`, `bright_cyan`, `bright_white`, `bg_black`, `bg_red`, `bg_green`, `bg_yellow`, `bg_blue`, `bg_magenta`, `bg_cyan`, `bg_white`, `bg_gray`, `bg_bright_red`, `bg_bright_green`, `bg_bright_yellow`, `bg_bright_blue`, `bg_bright_magenta`, `bg_bright_cyan`, `bg_bright_white`, `bold`, `dim`, `italic`, `underline`, `inverse`, `strikethrough`, `reset`.
+
+### `json` Module
+
+```pyle
+let json = import("json")
+json.parse(text)                   # value, or none on invalid JSON
+json.stringify(value)              # compact JSON string
+```
+
+- Parsed objects become maps, arrays stay arrays. Dot-reads work on parsed maps (`data.title`); dot-writes work too (`data.title = "x"`).
+- Bracket access on a missing key raises `IndexError` — guard with `.has(key)` first.
+- `json.stringify` emits `null` for `none`, arrays as arrays, and maps as objects. Struct instances raise `TypeError: Cannot serialize type 'struct' to JSON.`
+
+### `http` Module
+
+```pyle
+let http = import("http")
+
+# Client (one-shot functions; a Client(base_url) struct also exists)
+let res = http.get("http://host/path", {headers: {}, body: "", timeout: 5.0})
+res.status                             # int
+res.body                               # string
+res.headers                            # map (duplicate keys become arrays)
+res.ok                                 # bool (2xx)
+
+# Request options map (all optional):
+#   headers        map of name -> value
+#   body           string body for POST/PUT/PATCH/DELETE
+#   content_type   string (default "text/plain"); a Content-Type header wins and is not duplicated
+#   timeout        number of seconds (default 30)
+#   follow_redirects  bool (default true)
+#   verify_ssl     bool (default true)
+#   proxy          string "host:port"
+#   form           array of {name, value} or {name, path} -> multipart/form-data upload
+# Methods: get, post, put, patch, delete, head, options (+ *_async returning Future)
+#   http.cancel()  # stop all in-flight requests
+# Cancelling one request: the Future is the handle, so call its cancel() (best-effort).
+#   cancel() returns false when the future has no cancel hook or is already done.
+#   let f = http.get_async(url)
+#   if f.cancel() ...   # aborts the underlying socket; f.is_cancelled becomes true
+# Any producer (native or Pyle) can make its Future cancellable with
+#   f.set_cancel_hook(fn() { ... })   # runs when cancel() is called
+
+# Server
+let server = http.Server("127.0.0.1", 8090)
+server.get("/hello", fn(req) { return "hi" })
+server.post("/echo", fn(req) {
+    return {status: 201, headers: {"content-type": "application/json"}, body: req.body}
+})
+server.mount("/static", "public")      # serve a directory (call before run)
+server.set_keep_alive(1000, 5)         # max reqs per connection, idle timeout secs (before run)
+server.run()                           # blocking; serve_async() + waitfor(stopped) for async
+
+# Worker threads for the connection pool (default 4). Optional third
+# constructor arg, or the PYLE_HTTP_THREADS env var. One thread lets an idle
+# keep-alive connection block all other requests until the keep-alive timeout.
+let server2 = http.Server("127.0.0.1", 8091, 8)
+
+# Request fields: method, path, query (map), headers (map, lowercased keys),
+#   cookies (map), body (string), captures (array, regex groups), remote_addr
+req.cookie("sid")                      # single cookie value, or none
+http.set_cookie(name, value, options)  # build a Set-Cookie string; options: path,
+                                       #   domain, max_age (int), expires, http_only/secure
+                                       #   (bool), same_site. Header values accept a
+                                       #   string or an array of strings (multiple Set-Cookie).
+http.html(body, status?)               # shorthand {status, headers, body} map
+```
+
+- Handler return: `none`/string (text/plain), or map `{status, headers, body}`. A handler panic becomes a 500.
+- Route patterns are regex matched against the path; groups land in `req.captures`.
+
+### `crypto` Module (mbedtls-backed; `pyle` frontend only, not in `libpyle`)
+
+```pyle
+let crypto = import("crypto")
+crypto.sha256(data)                # bytes digest; data is string or bytes
+crypto.sha256_hex(data)            # hex string; same for sha1_hex, md5_hex
+crypto.sha1(data), crypto.md5(data)  # legacy hashes, bytes; also _hex variants
+crypto.hmac_sha256(key, data)      # bytes; also hmac_sha256_hex
+crypto.base64_encode(data)         # string; standard alphabet with padding
+crypto.base64_decode(s)            # bytes; raises on invalid input
+crypto.base64url_encode(data)      # string; URL-safe, no padding (JWT)
+crypto.base64url_decode(s)         # bytes; accepts unpadded input
+crypto.random(n)                   # n cryptographically random bytes (CTR-DRBG, 0..65536)
+crypto.to_hex(data)                # hex string of string or bytes
+crypto.pbkdf2(pass, salt, iters, len)  # bytes; PBKDF2-HMAC-SHA256, iters 1..10M, len 1..1024
+```
+
+### Declaration Files (.d.pyl)
+
+- `.d.pyl` files describe APIs for editors (completion/hover). They are never executed; the runtime refuses to import or run one.
+- `std/<module>.d.pyl` for native modules (`http`, `os`, `json`, `math`, `color`, `crypto`); `std/core/<type>.d.pyl` for builtin types (`string`, `array`, `map`, `bytes`, `coro`, `future`).
+- `std/core/builtin.d.pyl` declares process-global natives (`pcall`, `assert`, `print_trace`, `raise`, `print`, `typeof`, ...) plus the `PCallResult`/`PCallError`/`TraceFrame` shapes and the `PYLE_VERSION` constant. It is auto-loaded, so globals and result fields complete without imports. Annotate `let r: PCallResult` when the shape is not inferable.
+- Syntax: `fn name(param: type): ret { }`, `let NAME: type`, `struct Name(field: type) { }`. Untyped params stay bare.
+- Types: `int`, `float`, `string`, `bool`, `bytes`, `array`, `map`, `function`, `any`, `none`, named structs, plus generics `array[T]` and `map[K,V]`.
+
+### Type Hints in Source Files
+
+Hints are accepted everywhere but never enforced — they are documentation for editors, not the runtime:
+
+```pyle
+fn add(a: int, b: int): int {
+    return a + b
+}
+
+struct Point(x: float, y: float) {}
+
+let origin: Point = Point(x: 0, y: 0)
+let names: array[string] = ["a", "b"]
+let lookup: map[string, any] = {"k": 1}
+```
+
+- Annotatable: `let` bindings, `fn` params and return type, struct fields, struct method params and return type.
+- Unions: `string | int`, `map | array | none`. Members of every side complete. In expressions `|` is the bitwise or operator; in type position it is union syntax.
+- Optional: `string?` means `string` or `none`, and on a param also marks it omittable (builtins only; Pyle `fn` has no default values). `T?` binds tighter than `|`.
+- Wrong hints never error — `let x: int = "hello"` runs fine. The compiler parses and discards them.
+
+---
+
+## 15. Operators in Detail
+
+### Arithmetic
+`+` (add/string concat), `-` (sub), `*` (mul), `/` (div), `%` (mod).
+`/` on two ints is truncating int division (`17 / 2` is `8`, `-7 / 2` is `-3`); if either side is float it returns float (`7.0 / 2` is `3.5`).
+Division and modulo by zero raise `RuntimeError` for ints and floats: `1/0`, `1%0`, `1.0/0.0`, `0.0/0.0` all fail. There is no `inf` or `nan`.
+Signed int arithmetic wraps on overflow (two's complement): `9223372036854775807 + 1` is `-9223372036854775808`.
+No `**`, no `//`.
+
+### Bitwise
+`&` (and), `|` (or), `^` (xor), `~` (not, unary), `<<` (shift left), `>>` (arithmetic shift right).
+Operands must be ints — floats, bools, strings, none raise `TypeError` (no implicit conversion).
+`~x` equals `-x - 1`. `>>` sign-extends: `-4 >> 1` is `-2`. `<<` wraps in 64-bit two's complement: `1 << 63` is `-9223372036854775808`.
+Shift counts are ints: negative counts raise `TypeError`; counts >= 64 do not error — `x << 64` is `0`, `x >> 64` is `0` for `x >= 0` and `-1` for `x < 0`.
+Precedence is Python-style: `<<`/`>>` bind tighter than `&`, which binds tighter than `^`, which binds tighter than `|`, and all of them bind tighter than comparisons: `5 & 3 == 1` is `(5 & 3) == 1`.
+Compound assigns `&=`, `|=`, `^=`, `<<=`, `>>=` exist.
+
+### Comparison
+`==`, `!=`, `<`, `<=`, `>`, `>=`. Return bool.
+`<`, `<=`, `>`, `>=` work on numbers only — on strings they raise `TypeError`.
+`==`/`!=` semantics:
+- ints and floats compare numerically across types (`1 == 1.0` is true); `true == 1` is false.
+- strings compare by content.
+- every other reference type compares by heap identity: arrays, maps, struct instances, bytes, functions/closures, ranges, coros, native objects. `[] == []` is false; two bindings of the same object are equal.
+- `array.index_of` and map keys use the same equality, so reference-type matches are identity-based.
+
+### Logical
+`and` (short-circuit), `or` (short-circuit), `not` (unary).
+`and`/`or` return one of the operands (not necessarily bool). `not` always returns bool.
+`!` is a punctuation token but NOT used as logical NOT.
+
+### Assignment
+`=`, `+=`, `-=`, `*=`, `/=`, `&=`, `|=`, `^=`, `<<=`, `>>=` — all are expressions that return the assigned value.
+
+### Range
+`start..end` — creates a Range (exclusive end). Used in `for i in 1..10`.
+Boundaries must be ints: a float boundary raises `TypeError` (`Range boundaries must be integers.`). `start > end` yields an empty range. `0..arr.size()` is the idiom for a full-array slice.
+
+### Access
+- `.` for field/method access. Supports chaining: `obj.field.method()`.
+- `[]` for index/subscript: `arr[i]`, `map[key]`.
+- `()` for function/method call.
+
+### String Concatenation
+Use `+`. `"a" + "b"` → `"ab"`.
+No implicit concatenation. No `*` for repetition.
+
+---
+
+## 16. Notes
+
+- **`1.` is parsed as integer `1` followed by `.`** (field access). Use `1.0` for float.
+- **No `!` for logical NOT**: use `not x`.
+- **`and`/`or` return a value, not bool**: `0 or 5` returns `5`. `0 and 5` returns `0`.
+- **`none`, `false`, `0`, and `0.0` are falsy**. Everything else is truthy, including `[]` and `{}`.
+- **Empty arrays and maps are truthy**: `[]` and `{}` are truthy.
+- **String out-of-bounds access** is a runtime error (`IndexError`).
+- **Array out-of-bounds access** IS a runtime error.
+- **Map missing key**: `map["k"]` raises `IndexError`; `map.k` returns `none`. Use `.has(key)` to check first.
+- **`_init` always returns `self`**: If you `return` something else, it's silently replaced with `self`.
+- **Struct fields are fixed**: You CANNOT add `self.new_field = val` outside the struct declaration. This is a runtime `NameError`.
+- **`_` prefix is private**: `_field` and `_method()` can ONLY be accessed through `self.` inside the struct. Access from outside is a compile error.
+- **`continue`**: Skips to the next iteration of the innermost `while`, `for`, or `loop`. Using it outside a loop is a compile error.
+- **No `++` or `--`**: Use `x += 1`.
+- **No `break` outside loop**: Compile error.
+- **`return` from `_init`**: Injected automatically at end. Redundant `return` at end is fine.
+- **Functions capture by reference**: Closures mutate the original variables. This is by design.
+- **`for x in iterable`**: Works on arrays, ranges, strings (bytes), bytes (integer values 0-255). Maps are not iterable — use `for k in m.keys()`. Iterable must be iterable — error otherwise.
+- **Strings are byte strings**: `size()`, indexing, iteration, and `split("")` are byte-based; multibyte UTF-8 is not character-aware.
+- **String indexing returns a one-byte string**, not int: `"hello"[0] == "h"`.
+- **Reference equality is identity**: `[] == []` and `{} == {}` are false; strings compare by content. See Comparison.
+- **Division/modulo by zero raises** for ints and floats; no `inf`/`nan`.
+- **Int arithmetic wraps** on overflow.
+- **Extra `printf`/`format` arguments are ignored**: `printf("{}", 1, 2)` prints `1`.
+- **`json.stringify` rejects struct instances** with `TypeError`.
+- **`typeof(struct type)` is `HeapRef(n)`**, while `tostring(struct type)` is `struct {fields}`.
+- **Map keys cannot be arrays, maps, structs, or `BytesBuilder`**.
+- **String `<`/`<=`/`>`/`>=` raise `TypeError`**: only `==`/`!=` work on strings.
+- **`elif` and `else if` both work**: `elif` is a real keyword; `else if` is the ordinary nested form.
+- **`loop`** is `while true`. You need `break` to exit.
+- **Statement body without braces**: `if x > 5 f() else g()` — single statement only.
+
+---
+
+## 17. Format Strings
+
+`format(fmt, ...)` returns the formatted string; `printf(fmt, ...)` prints it with a trailing newline. Both run the same engine: the C++ {fmt} library (`fmt::vformat` with a dynamic argument store). The syntax is a close cousin of Python's `str.format`, but the format specifiers are the {fmt} / C-style set. The first argument must be a string; a malformed format raises `ArgumentError` with a `Format error: ...` message.
+
+```pyle
+printf("Hello {}!", "world")           # Hello world!
+printf("{:.2f}", 3.14159)              # 3.14
+let s = format("{} + {} = {}", 1, 2, 3)
+printf("{{{}}}", 42)                   # {42}
+printf("{1} {0}", "a", "b")            # b a
+```
+
+- **Escaping**: `{{` renders a literal `{`, `}}` a literal `}`. `format("{{}}", 1)` is `{}`.
+- **Fields**: `{}` consumes the next argument; `{0}` / `{1}` address by index, and indices can repeat or be reordered. Extra arguments are ignored: `printf("{}", 1, 2)` prints `1`.
+- **Format specs** (after `:`) are type-strict and use the {fmt} set. Verified working: `{:.2f}`, `{:.0f}`, `{:g}`, `{:e}` for floats; `{:d}`, `{:5d}`, `{:05d}`, `{:08d}`, `{:x}`, `{:X}`, `{:o}`, `{:b}`, `{:#x}`, `{:c}` for ints; `{:s}` for strings. Alignment, width and fill work: `{:>10}`, `{:<10}`, `{:^10}`, `{:>6.3}`, `{:>8.2f}`. Signs: `{:+d}`, `{: }`.
+- **Type mismatch is an error**: `format("{:.2f}", 5)` and `format("{:d}", 5.0)` both raise `ArgumentError: Format error: invalid format specifier`. Pass a float for `f`/`e`/`g` specs and an int for `d`/`x`/`o`/`b`/`c`.
+- **Not supported**: named fields (`format("{name}", 1)` raises `ArgumentError: Format error: argument not found`) and the `,` grouping option (`{,d}` / `{,.2f}` raise `invalid format specifier`).
+- **Argument conversion**: ints, floats and bools use their natural presentation, `none` becomes `none`, and any other value uses its display string (arrays print like `[1, 2]`).
+- `printf` and `format` share the engine; `printf` only adds the trailing newline.
+
+---
+
+## 18. Memory and GC
+
+- Automatic garbage collection (mark-sweep, non-compacting).
+- Strings are interned (duplicate strings share one heap allocation).
+- GC runs automatically on heap allocation. Can be disabled with `set_gc_enabled(false)` during setup.
+- Struct instances are reference types (heap-allocated, passed by reference).
+- Arrays and maps are reference types.
+- Ints, floats, bools, none are value types (stack-allocated, copied on assignment).
+
+---
+
+## 19. Embedding in C++
+
+### Minimal Embedding
+
+```cpp
+#include <pyle/pyle.hpp>
+
+pyle::Pyle interpreter;
+pyle::register_core_natives(interpreter.vm);
+
+std::string code = R"(
+    fn add(a, b) { return a + b }
+    print(add(3, 4))
+)";
+interpreter.execute(code, false, "script.pyl");
+```
+
+### Selecting Core Modules (embedders)
+
+```cpp
+pyle::register_core_natives(interpreter.vm, false);  // builtins only, no os/path/fs/color/math/proc
+pyle::register_math_module(interpreter.vm);          // a la carte: os, path, fs, color, math, proc
+pyle::register_proc_module(interpreter.vm);
+```
+
+### Binding a C++ Free Function
+
+```cpp
+int add(int a, int b) { return a + b; }
+pyle::bind_function<&add>(interpreter.vm, "add");
+// Now pyle code can call add(3, 4)
+```
+
+### Binding a C++ Class (Global)
+
+```cpp
+struct Vec2 { double x, y; };
+
+pyle::ClassBinder<Vec2>(interpreter.vm, "Vec2")
+    .constructor<double, double>()
+    .member<double, &Vec2::x>("x")
+    .member<double, &Vec2::y>("y")
+    .register_globally();
+
+// Pyle: let v = Vec2(1.0, 2.0)
+```
+
+### Binding a C++ Class (Module-exported)
+
+```cpp
+pyle::ClassBinder<Player>(interpreter.vm, "Player")
+    .constructor<std::string, int>()
+    .method<&Player::damageBy>("damageBy")
+    .method<&Player::status>("status");
+
+pyle::register_module(interpreter.vm, "game", [&](pyle::VM& vm) {
+    return pyle::NativeModule(vm, "game")
+        .class_binder(player_binder)
+        .build();
+});
+
+// Pyle: let g = import("game"); let p = g.Player("Art", 100)
+```
+
+### Calling Pyle from C++
+
+```cpp
+// Get a global function
+pyle::Value fn = interpreter.vm.get_global("my_func");
+
+// Call it with args
+pyle::Value result = interpreter.vm.call_func(fn, 42, "hello");
+
+// Convert result to C++
+double val = pyle::from_value<double>(interpreter.vm, result);
+```
+
+### Raw Native Function (for custom arg handling)
+
+```cpp
+pyle::Value my_native(pyle::VM& vm, pyle::ArgView args) {
+    if (args.size() != 1) {
+        vm.runtime_error(pyle::RuntimeError::ArgumentError, "expected 1 arg");
+        return {};
+    }
+    int64_t n = pyle::from_value<int64_t>(vm, args[0]);
+    return pyle::Value(n * 2);
+}
+pyle::bind_function<my_native>(interpreter.vm, "double_it");
+```
+
+### GC Root Management
+
+```cpp
+// RAII guard to prevent GC from collecting an object
+pyle::GCRoot guard(vm, heap_idx, pyle::Value::Tag::MyType);
+```
+
+---
+
+## 20. Bytecode / OpCodes (62 instructions)
+
+| OpCode | Operand | Stack Effect | Description |
+|--------|---------|-------------|-------------|
+| `LOAD_CONST` | const_idx | `→ val` | Push constant from pool |
+| `LOAD_LOCAL` | slot | `→ val` | Push local at slot |
+| `SET_LOCAL` | slot | `val →` | Pop into local |
+| `LOAD_GLOBAL_SLOT` | slot | `→ val` | Push global at slot |
+| `SET_GLOBAL_SLOT` | slot | `val →` | Pop into global |
+| `DEFINE_GLOBAL_SLOT` | slot | `val →` | Define new global |
+| `SET_LOCAL_POP` | slot | `val →` | Set local and pop |
+| `INC_LOCAL` | slot | `→` | Increment the local at slot in place |
+| `DEC_LOCAL` | slot | `→` | Decrement the local at slot in place |
+| `SET_GLOBAL_SLOT_POP` | slot | `val →` | Set global and pop |
+| `GET_ITER` | | `val → iter` | Get iterator from container |
+| `FOR_ITER` | offset | `iter → val/none` | Advance iterator, jump to exit if exhausted |
+| `NEW_RANGE` | | `start, end → range` | Create range |
+| `CLOSURE` | (unused) | `fn → closure` | Create closure from the function value on the stack |
+| `LOAD_UPVALUE` | slot | `→ val` | Push upvalue (captured variable) |
+| `SET_UPVALUE` | slot | `val →` | Pop into upvalue |
+| `SET_UPVALUE_POP` | slot | `val →` | Set upvalue and pop |
+| `CLOSE_UPVALUES` | limit | `→` | Close upvalues at or above the stack limit |
+| `GET_FIELD` | field_name_idx | `obj → val` | Get field/method |
+| `SET_FIELD` | field_name_idx | `obj, val → val` | Set field |
+| `ADD` | | `a, b → result` | a + b |
+| `SUB` | | `a, b → result` | a - b |
+| `MUL` | | `a, b → result` | a * b |
+| `DIV` | | `a, b → result` | a / b |
+| `MOD` | | `a, b → result` | a % b |
+| `NEG` | | `a → result` | -a |
+| `EQ` | | `a, b → bool` | a == b |
+| `NEQ` | | `a, b → bool` | a != b |
+| `LT` | | `a, b → bool` | a < b |
+| `LTE` | | `a, b → bool` | a <= b |
+| `GT` | | `a, b → bool` | a > b |
+| `GTE` | | `a, b → bool` | a >= b |
+| `NOT` | | `a → bool` | not a |
+| `BAND` | | `a, b → result` | a & b (integers) |
+| `BOR` | | `a, b → result` | a | b (integers) |
+| `BXOR` | | `a, b → result` | a ^ b (integers) |
+| `SHL` | | `a, b → result` | a << b (integers) |
+| `SHR` | | `a, b → result` | a >> b (integers) |
+| `BNOT` | | `a → result` | ~a (integer) |
+| `JUMP` | offset | `→` | Unconditional forward jump |
+| `JUMP_IF_FALSE` | offset | `cond →` | Jump if falsy |
+| `JUMP_IF_TRUE` | offset | `cond →` | Jump if truthy |
+| `POP_JUMP_IF_FALSE` | offset | `cond →` | Pop and jump if falsy |
+| `POP_JUMP_IF_TRUE` | offset | `cond →` | Pop and jump if truthy |
+| `JUMP_IF_NOT_ARRAY` | offset | `val → val` | Jump if val is not an array |
+| `LOOP` | offset | `→` | Backward jump (loops) |
+| `CALL` | arg_count | `fn, args... → result` | Call function |
+| `CALL_METHOD` | arg_count | `obj, name, args... → result` | Call method |
+| `RETURN` | | `val →` | Return from function |
+| `POP` | | `val →` | Discard |
+| `NEW_ARRAY` | count | `items... → array` | Create array from count items on the stack |
+| `NEW_MAP` | pair_count | `keys/values... → map` | Create map from pair_count key/value pairs on the stack |
+| `CALL_KW` | pair_count | `fn, key_vals... → result` | Call with keyword args |
+| `GET_INDEX` | | `obj, key → val` | obj[key] |
+| `SET_INDEX` | | `obj, key, val → val` | obj[key] = val |
+| `INDEX_GET_LOCAL` | slot | `key → val` | Read local_container[key] |
+| `INDEX_SET_LOCAL` | slot | `key, val → val` | Write local_container[key] |
+| `INC_INDEX_LOCAL` | slot | `key →` | Increment local_container[key] |
+| `DEC_INDEX_LOCAL` | slot | `key →` | Decrement local_container[key] |
+| `YIELD` | | `val →` | Suspend coroutine |
+| `HALT` | | `val →` | End execution, val is result |
+| `APPEND` | slot | `val →` | Append to the array held in the local at slot |
+
+---
+
+## 21. Value Tags (19 types)
+
+| Tag | C++ Type | Heap Object | Notes |
+|-----|----------|-------------|-------|
+| `Int` | `int64_t` | — | Stack value |
+| `Float` | `double` | — | Stack value |
+| `Bool` | `bool` | — | Stack value |
+| `None` | — | — | Stack value |
+| `StringRef` | `HeapIdx` | `std::string` | Interned |
+| `ArrayRef` | `HeapIdx` | `std::vector<Value>` | |
+| `StructRef` | `HeapIdx` | `Struct` | Struct instance |
+| `NativeFuncRef` | `HeapIdx` | `NativeFn` (function ptr) | |
+| `FuncRef` | `HeapIdx` | `Function` | Compiled pyle function |
+| `IteratorRef` | `HeapIdx` | `Iterator` | |
+| `RangeRef` | `HeapIdx` | `Range` | |
+| `ClosureRef` | `HeapIdx` | `Closure` | Function + upvalues |
+| `UpvalueRef` | `HeapIdx` | `Upvalue` | Captured variable |
+| `StructTypeRef` | `HeapIdx` | `StructType` | Type definition |
+| `MapRef` | `HeapIdx` | `MapObject` | |
+| `NativeObjectRef` | `HeapIdx` | `NativeObject` | C++ object wrapper |
+| `CoroutineRef` | `HeapIdx` | `Coroutine` | |
+| `BytesRef` | `HeapIdx` | `BytesType` | Raw byte buffer |
+| `BytesBuilderRef` | `HeapIdx` | `BytesType` | Mutable byte writer |
+
+---
+
+## 22. Compilation Pipeline
+
+```
+Source → Lexer → Tokens → Parser → AST → Compiler → Bytecode Chunk → VM.execute()
+```
+
+- Lexer: produces `Token` structs with type, lexeme, line number.
+- Parser: recursive descent, produces `vector<unique_ptr<Stmt>>` AST.
+- Compiler: single-pass, produces `Chunk` with `instr` (uint32_t[]), `const_pool` (Value[]), `lines` (size_t[]).
+- VM: stack-based bytecode interpreter. Uses computed goto (compiler-specific) or switch dispatch.
+
+Each instruction is a `uint32_t` in `Chunk::instr`. The encoding is `(operand << 8) | opcode`: the **low 8 bits are the opcode** (`get_op` masks `0xFF`) and the **high 24 bits are one unsigned operand** (`get_operand` shifts right by 8), so an operand ranges from 0 to 16,777,215. There is exactly one operand slot per instruction; it is always an integer, never raw bytes, and nothing else is packed into it. The `ARG` macro reads it as `get_operand(*(ip - 1))`.
+
+What the operand means is per opcode:
+
+- `LOAD_CONST`: index into `Chunk::const_pool`.
+- `LOAD_LOCAL`, `SET_LOCAL`, `SET_LOCAL_POP`, `INC_LOCAL`, `DEC_LOCAL`, `APPEND`, `INDEX_GET_LOCAL`, `INDEX_SET_LOCAL`, `INC_INDEX_LOCAL`, `DEC_INDEX_LOCAL`: local slot index, relative to `frame->stack_base`.
+- `LOAD_GLOBAL_SLOT`, `SET_GLOBAL_SLOT`, `SET_GLOBAL_SLOT_POP`, `DEFINE_GLOBAL_SLOT`: index into the active global slot array.
+- `LOAD_UPVALUE`, `SET_UPVALUE`, `SET_UPVALUE_POP`: upvalue slot index.
+- `CALL`, `CALL_METHOD`: argument count. `CALL_KW`: number of keyword pairs (the names and values sit on the stack, not in the operand).
+- `NEW_ARRAY`: element count (elements are on the stack). `NEW_MAP`: key/value pair count.
+- `GET_FIELD`, `SET_FIELD`: interned field-name id (a string heap index).
+- `JUMP`, `JUMP_IF_FALSE`, `JUMP_IF_TRUE`, `POP_JUMP_IF_FALSE`, `POP_JUMP_IF_TRUE`, `JUMP_IF_NOT_ARRAY`, `FOR_ITER`: relative forward jump distance in instructions, measured from the instruction after the jump (`ip += ARG`). `FOR_ITER` jumps to the loop exit when the iterator is exhausted.
+- `LOOP`: relative backward jump distance (`ip -= ARG`).
+- `CLOSE_UPVALUES`: stack slot limit (the locals count at the end of a scope).
+- `CLOSURE`: operand unused; the function value is on the stack, pushed by a preceding `LOAD_CONST`.
+- `NEW_RANGE`, `GET_ITER`, `GET_INDEX`, `SET_INDEX`, arithmetic, comparisons, `YIELD`, `HALT`, `POP`: operand unused (0).
+
+Data that does not fit in one operand lives outside the instruction: constants in `Chunk::const_pool`, source lines in `Chunk::lines`, and struct field inline-cache entries in `Chunk::field_ic`.
+
+---
+
+## 23. Known Limitations
+
+- Bitwise operators exist (`&`, `|`, `^`, `~`, `<<`, `>>`) but are int-only
+- No `switch`/`case`
+- No ternary `a ? b : c`
+- No `try`/`catch` exceptions (use `pcall` for catchable errors; uncaught panics halt execution)
+- The `pyle` binary exits nonzero when the script fails to compile or a runtime panic escapes
+- No list/dict comprehensions
+- No generator expressions
+- No `with` statement
+- No `del`
+- No `is` operator
+- No runtime-enforced type hints (annotations accepted, ignored — see Type Hints)
+- No `match`/`case` pattern matching
+- No `__dunder__` methods (use Named special methods like `_init`, `_add`)
+- No decorators
+- No `@property` (struct getters/setters available only via C++ binding)
+- No multiple inheritance or interfaces
+- No threads or parallelism (coroutines are cooperative single-thread)
+- No `f-string` (use `format()`)
+- No slice assignment `arr[1:3] = [...]`
+- Compound assignment on an index requires a simple index expression: `a[i] += 1` and `a[x + 1] = a[x + 1] + 1` are valid, `a[x + 1] += 1` is a syntax error
+- No negative indices for arrays/strings
+- No `++`/`--` operators
+- No `**` exponentiation (use `math.pow()`)
+- No `//` integer division
+- No `!` for logical NOT (use `not`)
+- No `in` for containment (only `for x in iterable`)
+- No `not in`
+
+---
+
+## 24. Quick Reference Examples
+
+```pyle
+# Hello world
+print("Hello World!")
+
+# Fibonacci
+fn fib(n) {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+print(fib(10))
+
+# Closures
+fn make_counter() {
+    let x = 0
+    return fn() { x += 1; return x }
+}
+
+# Struct with methods
+struct Rect(w, h) {
+    fn area() { return self.w * self.h }
+    static fn square(s) { return Rect(s, s) }
+}
+
+# Enum
+enum Color { RED, GREEN, BLUE }
+
+# Import + math
+let m = import("math")
+print(m.sqrt(144))
+
+# Async
+fn task() {
+    waitfor(os.sleep_async(500))
+    print("done")
+}
+async.run(task)
+
+# For loop with range
+let sum = 0
+for i in 1..101 { sum += i }
+print(sum)
+
+# While loop
+let i = 0
+while i < 10 {
+    print(i)
+    i += 1
+}
+
+# Map
+let person = {name: "Alice", age: 30}
+print(person["name"])
+person["age"] = 31
+print(person.keys())
+
+# Array
+let arr = [1, 2, 3]
+arr.append(4)
+print(arr.pop())
+
+# String
+let s = "hello world"
+print(s.size())
+print(s.slice(0, 5))
+print(s.split(" "))
+
+# File I/O
+let f = File.open("test.txt", "w")
+f.write("hello\n")
+f.close()
+let r = File.open("test.txt", "r")
+print(r.read_all())
+r.close()
+```
+
+================================================================================
+Pyle Language Examples
+================================================================================
+These are example .pyl scripts demonstrating various Pyle language features.
+They can be found in the examples/ directory of the project.
+
+--------------------------------------------------------------------------------
+Example: basic.pyl - Language fundamentals
+Demonstrates: printing, format strings, imports, variables, types (string, int,
+float, array, map), arithmetic, booleans, logical operators, control flow
+(if/elif/else), while loops, for-in loops over ranges and arrays, string methods
+(size, slice, to_num, split), array methods (append, pop, size, slice), map
+methods (has, keys, values, clear), and nullability (none).
+--------------------------------------------------------------------------------
+
+let os = import("os")
+
+print("Basic types & Variables")
+let str = "Hello, world."
+print(str[0])
+
+let integer = 5
+let float = 6.7
+let array = [str, integer, float, "more", 10, print]
+print(array[0])
+
+let maps = { aKey: "aValue", "string-keys": 420, 5+5: 10 }
+print(maps["aKey"])
+
+print("Basic arithmetics")
+print(4+4); print(5-4); print(5*5); print(5.5/5.4); print(5%5)
+
+let is_game_running = true
+let is_paused = false
+print(is_game_running and not is_paused)
+print(is_paused or false)
+
+let health = 0
+if health <= 0 {
+    print("Player is dead.")
+} elif health < 30 {
+    print("Player is in danger!")
+} else {
+    print("Player is healthy.")
+}
+
+let counter = 0
+while counter < 3 { counter += 1 }
+
+for i in 1..4 { print(i) }
+for item in ["sword", "shield", "potion"] { print(item) }
+
+let raw_string = "123.45"
+raw_string.size(); raw_string.slice(0, 3); raw_string.to_num(); raw_string.split(".")
+
+let inventory = []
+inventory.append("gold"); inventory.append("key")
+inventory.size(); inventory.pop(); inventory.slice(0..inventory.size())
+
+let data = {"hp": 100, status: "alive"}
+data["inven"] = inventory
+data.has("inven"); data.keys(); data.values(); data.clear()
+inventory.clear()
+
+let maybe_item = none
+if maybe_item == none { print("none check") }
+
+--------------------------------------------------------------------------------
+Example: async_functions.pyl - Cooperative concurrency
+Demonstrates: async.run(), waitfor(), async.all() for concurrent task
+execution, non-blocking sleep.
+--------------------------------------------------------------------------------
+
+let os = import("os")
+
+fn task_a() {
+    waitfor(os.sleep_async(1000))
+    print("Sleeping A completed")
+}
+
+fn task_b() {
+    waitfor(os.sleep_async(1000))
+    print("Sleeping B completed")
+}
+
+fn main() {
+    let start = os.time()
+    async.all([task_a, task_b])
+    let end = os.time()
+    printf("All tasks completed in: {:.2f}s", end - start)
+}
+
+async.run(main) # must be call with async.run if function contains async function waiting
+
+--------------------------------------------------------------------------------
+Example: closures.pyl - Closures / lexical scoping
+Demonstrates: nested functions capturing local variables (closures).
+--------------------------------------------------------------------------------
+
+fn make_counter() {
+    let x = 0
+    fn counter() {
+        x += 1
+        return x
+    }
+    return counter
+}
+
+fn main() {
+    let c = make_counter()
+    let i = 0
+    while i < 500 { i = c() }
+    printf("Result: {}", i)
+}
+
+main()
+
+--------------------------------------------------------------------------------
+Example: enums.pyl - Enum types
+Demonstrates: enum declaration with named members.
+--------------------------------------------------------------------------------
+
+enum Direction { NORTH, SOUTH, EAST, WEST }
+print(Direction.NORTH)
+print(Direction.SOUTH)
+print(Direction.EAST)
+print(Direction.WEST)
+
+--------------------------------------------------------------------------------
+Example: factorial.pyl - Iterative algorithm benchmark
+Demonstrates: while loops, arithmetic, function calls, os.time() benchmarking.
+--------------------------------------------------------------------------------
+
+let os = import("os")
+
+fn factorial(n) {
+    let result = 1
+    let i = 2
+    while i <= n { result *= i; i += 1 }
+    return result
+}
+
+fn main() {
+    let start = os.time()
+    let i = 0
+    while i < 100000 { factorial(15); i += 1 }
+    printf("Time taken: {} seconds", os.time() - start)
+}
+
+main()
+
+--------------------------------------------------------------------------------
+Example: fib.pyl - Recursive benchmark (Fibonacci)
+Demonstrates: recursion, conditional logic, os.time() benchmarking.
+--------------------------------------------------------------------------------
+
+let os = import("os")
+
+fn fib(n) {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn main() {
+    let start = os.time()
+    let r = fib(35)
+    printf("Fibonacci(35) = {}, time: {:.6f}s", r, os.time() - start)
+}
+
+main()
+
+--------------------------------------------------------------------------------
+Example: files.pyl - File I/O (sync and async)
+Demonstrates: File.open() modes (r/w/a/wb/rb), read/write/seek/tell, async I/O
+with waitfor(), os.remove().
+--------------------------------------------------------------------------------
+
+let os = import("os")
+
+fn test_text_io() {
+    let f = File.open("test.txt", "w")
+    f.write("line 1\nline 2\n"); f.close()
+    let r = File.open("test.txt", "r")
+    let line = r.read_line()
+    while line != none { print(line); line = r.read_line() }
+    r.close()
+}
+
+fn test_binary_io() {
+    let f = File.open("test.bin", "wb")
+    f.write_bytes(Bytes([0x41, 0x42, 255, 0, 128])); f.close()
+    let r = File.open("test.bin", "rb")
+    r.seek(2, 0)
+    let bytes = r.read_bytes()
+    for b in bytes { print(b) }
+    r.close()
+}
+
+fn test_async_io() {
+    waitfor(File.open("test_async.txt", "w").write_async("async line\n"))
+    let content = waitfor(File.open("test_async.txt", "r").read_all_async())
+    print(content)
+}
+
+fn main() {
+    test_text_io(); test_binary_io(); test_async_io()
+    os.remove("test.txt"); os.remove("test.bin"); os.remove("test_async.txt")
+}
+
+async.run(main)
+
+--------------------------------------------------------------------------------
+Example: input.pyl - User input
+Demonstrates: input() function with optional prompt.
+--------------------------------------------------------------------------------
+
+let name = input("What is your name? ")
+print("Hello, " + name)
+
+--------------------------------------------------------------------------------
+Example: json_parser.pyl - Recursive descent JSON parser
+Demonstrates: struct with _init, recursion, string iteration, array/map
+building, fs.exists(), fs.read_file(). Full Pyle capabilities showcase.
+--------------------------------------------------------------------------------
+
+let os = import("os")
+
+struct JSONParser(_src, _idx) {
+    fn _init() { self._src = ""; self._idx = 0 }
+    fn _peek() {
+        if self._idx >= self._src.size() { return "" }
+        return self._src[self._idx]
+    }
+    fn _advance() { let c = self._peek(); self._idx += 1; return c }
+    fn _skip_whitespace() { while self._peek().is_space() { self._advance() } }
+
+    fn _parse_value() {
+        self._skip_whitespace()
+        let char = self._peek()
+        if char == "" { return none }
+        if char == "{" { return self._parse_object() }
+        if char == "[" { return self._parse_array() }
+        if char == "\"" { return self._parse_string() }
+        if char == "t" or char == "f" or char == "n" { return self._parse_keyword() }
+        return self._parse_number()
+    }
+
+    fn _parse_string() {
+        self._advance()
+        let chars = []
+        while self._peek() != "\"" and self._peek() != "" {
+            if self._peek() == "\\" {
+                self._advance()
+                let esc = self._advance()
+                if esc == "n" { chars.append("\n") }
+                elif esc == "t" { chars.append("\t") }
+                elif esc == "\\" { chars.append("\\") }
+                elif esc == "\"" { chars.append("\"") }
+                else { chars.append(esc) }
+            } else { chars.append(self._advance()) }
+        }
+        self._advance()
+        return "".join(chars)
+    }
+
+    fn _parse_number() {
+        let start = self._idx
+        if self._peek() == "-" { self._advance() }
+        while self._peek().is_digit() or self._peek() == "." { self._advance() }
+        return self._src.slice(start, self._idx).to_num()
+    }
+
+    fn _parse_keyword() {
+        let start = self._idx
+        while self._peek().is_alpha() { self._advance() }
+        let kw = self._src.slice(start, self._idx)
+        if kw == "true" { return true }
+        if kw == "false" { return false }
+        return none
+    }
+
+    fn _parse_array() {
+        self._advance()
+        let arr = []; self._skip_whitespace()
+        if self._peek() == "]" { self._advance(); return arr }
+        while true {
+            self._skip_whitespace()
+            arr.append(self._parse_value())
+            self._skip_whitespace()
+            if self._peek() == "]" { self._advance(); return arr }
+            if self._peek() == "," { self._advance() }
+        }
+    }
+
+    fn _parse_object() {
+        self._advance()
+        let obj = {}; self._skip_whitespace()
+        if self._peek() == "}" { self._advance(); return obj }
+        while true {
+            self._skip_whitespace()
+            let key = self._parse_string()
+            self._skip_whitespace()
+            if self._peek() == ":" { self._advance() }
+            obj[key] = self._parse_value()
+            self._skip_whitespace()
+            if self._peek() == "}" { self._advance(); return obj }
+            if self._peek() == "," { self._advance() }
+        }
+    }
+
+    fn parse_string(s) { self._src = s; self._idx = 0; return self._parse_value() }
+}
+
+let parser = JSONParser()
+let parsed = parser.parse_string('{"name":"Arthur","level":42,"stats":{"hp":120}}')
+print(parsed["name"]); print(parsed["stats"]["hp"])
+
+--------------------------------------------------------------------------------
+Example: loop.pyl - Infinite loop with break
+Demonstrates: loop {} keyword, break statement.
+--------------------------------------------------------------------------------
+
+let i = 0
+loop { i += 1; if i >= 3 { break } }
+print(i)
+
+--------------------------------------------------------------------------------
+Example: structs.pyl - Struct types with methods and static functions
+Demonstrates: struct properties, _init, public/private methods, static methods,
+named-argument construction, fixed-shape semantics.
+--------------------------------------------------------------------------------
+
+struct Pos(x, y) {}
+
+struct Player(name, health, pos, _private_prop) {
+    fn _init(n) {
+        self.name = n; self.health = 100
+        self.pos = Pos(x: 0, y: 0)
+    }
+    fn damageBy(n) { self.health -= n }
+    fn status() { return format("Name: {}\nHealth: {}", self.name, self.health) }
+    static fn update_players(arr, p) { arr.append(p) }
+}
+
+let p = Player("John")
+print(p.status())
+p.damageBy(20)
+printf("{} has {} hp left.", p.name, p.health)
+print(p.distanceFrom(Pos(x: 0, y: 5)))
+
+--------------------------------------------------------------------------------
+Raylib Examples
+================================================================================
+These examples use the raylib module accessed via import("raylib").
+They cover windowing, 2D/3D drawing, input, shaders, and simulation.
+
+--------------------------------------------------------------------------------
+Example: basic_window.pyl - Minimal raylib window
+Demonstrates: InitWindow, SetTargetFPS, WindowShouldClose, BeginDrawing,
+ClearBackground, DrawText, CloseWindow. Centered text display.
+--------------------------------------------------------------------------------
+
+let rl = import("raylib")
+rl.SetExitKey(rl.KEY_NULL)
+rl.InitWindow(800, 450, "basic window")
+rl.SetTargetFPS(60)
+
+let text = "hello from pyle!"
+let tw = rl.MeasureText(text, 40)
+let tx = (800 - tw) / 2
+let ty = (450 - 40) / 2
+
+while not rl.WindowShouldClose() {
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.RAYWHITE)
+    rl.DrawText(text, tx, ty, 40, rl.LIGHTGRAY)
+    rl.EndDrawing()
+}
+rl.CloseWindow()
+
+--------------------------------------------------------------------------------
+Example: 3d_cubes.pyl - 3D rendering with orbital camera
+Demonstrates: Camera3D, UpdateCamera with CAMERA_ORBITAL, BeginMode3D,
+DrawCube, DrawCubeWires, DrawSphere, DrawPlane, DrawGrid.
+--------------------------------------------------------------------------------
+
+let rl = import("raylib")
+rl.SetExitKey(rl.KEY_NULL)
+rl.InitWindow(800, 600, "3D cubes")
+rl.SetTargetFPS(60)
+
+let cam = rl.Camera3D()
+cam.position = rl.Vector3(10, 10, 10)
+cam.target = rl.Vector3(0, 0, 0)
+cam.up = rl.Vector3(0, 1, 0)
+cam.fovy = 45
+cam.projection = rl.CAMERA_PERSPECTIVE
+
+while not rl.WindowShouldClose() {
+    rl.UpdateCamera(cam, rl.CAMERA_ORBITAL)
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.RAYWHITE)
+    rl.BeginMode3D(cam)
+    rl.DrawGrid(10, 1)
+    rl.DrawCube(rl.Vector3(0, 1, 0), 2, 2, 2, rl.RED)
+    rl.DrawCubeWires(rl.Vector3(0, 1, 0), 2, 2, 2, rl.DARKGRAY)
+    rl.DrawCube(rl.Vector3(-3, 1, -3), 1, 1, 1, rl.GREEN)
+    rl.DrawCube(rl.Vector3(3, 1, 3), 1, 1, 1, rl.BLUE)
+    rl.DrawSphere(rl.Vector3(0, 3, 0), 1, rl.ORANGE)
+    rl.DrawSphereWires(rl.Vector3(0, 3, 0), 1, 16, 16, rl.DARKGRAY)
+    rl.DrawPlane(rl.Vector3(0, -0.5, 0), rl.Vector2(12, 12), rl.BEIGE)
+    rl.EndMode3D()
+    rl.DrawFPS(10, 10)
+    rl.EndDrawing()
+}
+rl.CloseWindow()
+
+--------------------------------------------------------------------------------
+Example: life.pyl - Conway's Game of Life
+Demonstrates: Struct-based grid simulation, Cell/Life structs, GetRandomSeed,
+GetMouseX/Y, IsMouseButtonDown, IsKeyPressed, GetTime, color palette array,
+panel UI with DrawText, generation counting, variable-step simulation.
+Full game-of-life with painting and controls.
+--------------------------------------------------------------------------------
+
+let rl = import("raylib"); let m = import("math")
+let W = 1280; let H = 800; let CELL = 6; let PANEL = 220
+let GRID_W = W - PANEL; let COLS = m.floor(GRID_W / CELL); let ROWS = m.floor(H / CELL)
+let STEP_RATE = 0.08
+
+struct Cell(alive, age) {
+    fn _init(a, g) { self.alive = a; self.age = g }
+    fn revive() { self.alive = 1; self.age = 1 }
+    fn kill() { self.alive = 0; self.age = 0 }
+}
+
+struct Life(cols, rows, grid) {
+    fn _init(c, r) {
+        self.cols = c; self.rows = r; self.grid = []
+        let k = 0; while k < c * r { self.grid.append(Cell(0, 0)); k += 1 }
+    }
+    fn at(x, y) { return self.grid[x + y * self.cols] }
+    fn reseed() { for cell in self.grid {
+        if rl.GetRandomValue(0, 99) < 30 { cell.revive() } else { cell.kill() }
+    }}
+    fn clear() { for cell in self.grid { cell.kill() } }
+}
+
+let life = Life(COLS, ROWS)
+let palette = [rl.GREEN, rl.LIME, rl.YELLOW, rl.GOLD, rl.ORANGE,
+               rl.RED, rl.MAGENTA, rl.PURPLE, rl.BLUE, rl.SKYBLUE, rl.RAYWHITE]
+let PANEL_COL = rl.Color(18, 18, 26, 255)
+
+rl.InitWindow(W, H, "Pyle Life - Conway's Game of Life")
+rl.SetTargetFPS(60)
+
+while not rl.WindowShouldClose() {
+    if rl.IsMouseButtonDown(0) {
+        let gx = m.floor(rl.GetMouseX() / CELL); let gy = m.floor(rl.GetMouseY() / CELL)
+        for dy in -1..2 { for dx in -1..2 {
+            let px = gx + dx; let py = gy + dy
+            if px >= 0 and px < COLS and py >= 0 and py < ROWS { life.at(px, py).revive() }
+        }}
+    }
+    if rl.IsMouseButtonDown(1) {
+        let gx = m.floor(rl.GetMouseX() / CELL); let gy = m.floor(rl.GetMouseY() / CELL)
+        for dy in -1..2 { for dx in -1..2 {
+            let px = gx + dx; let py = gy + dy
+            if px >= 0 and px < COLS and py >= 0 and py < ROWS { life.at(px, py).kill() }
+        }}
+    }
+    if rl.IsKeyPressed(82) { life.reseed() }
+    if rl.IsKeyPressed(67) { life.clear() }
+
+    life.step()  # (simplified — full neighbor-count logic in source)
+
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.BLACK)
+    rl.DrawRectangle(GRID_W, 0, PANEL, H, PANEL_COL)
+    rl.DrawText("Pyle Life", GRID_W + 16, 18, 28, rl.RAYWHITE)
+    rl.DrawFPS(10, 10)
+    rl.EndDrawing()
+}
+rl.CloseWindow()
+
+--------------------------------------------------------------------------------
+Example: shader_effect.pyl - Custom GLSL shader
+Demonstrates: LoadShader, GetShaderLocation, BeginShaderMode, EndShaderMode,
+GenImageChecked, LoadTextureFromImage, shader uniform time updates.
+--------------------------------------------------------------------------------
+
+let rl = import("raylib")
+rl.SetExitKey(rl.KEY_NULL)
+rl.InitWindow(800, 600, "shader effect")
+rl.SetTargetFPS(60)
+
+let img = rl.GenImageChecked(256, 256, 16, 16, rl.DARKBLUE, rl.SKYBLUE)
+let tex = rl.LoadTextureFromImage(img)
+rl.UnloadImage(img)
+
+let shader = rl.LoadShader(none, "examples/raylib/test.fs")
+let loc_time = rl.GetShaderLocation(shader, "u_time")
+
+let time = 0
+while not rl.WindowShouldClose() {
+    time += rl.GetFrameTime()
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.RAYWHITE)
+    rl.BeginShaderMode(shader)
+    rl.DrawTextureEx(tex, rl.Vector2(272, 172), 0, 1, rl.WHITE)
+    rl.EndShaderMode()
+    rl.EndDrawing()
+}
+rl.UnloadTexture(tex)
+rl.UnloadShader(shader)
+rl.CloseWindow()
+```

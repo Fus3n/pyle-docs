@@ -1,0 +1,74 @@
+{
+	"$schema": "vscode://schemas/color-theme",
+	"name": "Pyle Dark",
+	"type": "dark",
+	"colors": {
+		"editor.background": "#121216",
+		"editor.foreground": "#e8e1d7",
+		"editorLineNumber.foreground": "#5a5660",
+		"editorLineNumber.activeForeground": "#ff9a66",
+		"editor.selectionBackground": "#3a2a22",
+		"editor.inactiveSelectionBackground": "#2a2220",
+		"editorCursor.foreground": "#ff6b2c",
+		"editorIndentGuide.background1": "#262630",
+		"editorIndentGuide.activeBackground1": "#3a3a46"
+	},
+	"tokenColors": [
+		{
+			"scope": ["comment", "comment.line.number-sign.pyle"],
+			"settings": { "foreground": "#77727c", "fontStyle": "italic" }
+		},
+		{
+			"scope": ["string", "string.quoted.double.pyle"],
+			"settings": { "foreground": "#a8d48a" }
+		},
+		{
+			"scope": ["constant.character.escape.pyle"],
+			"settings": { "foreground": "#ffc46b" }
+		},
+		{
+			"scope": ["constant.numeric"],
+			"settings": { "foreground": "#ffc46b" }
+		},
+		{
+			"scope": ["constant.language", "constant.language.pyle"],
+			"settings": { "foreground": "#ff9a66" }
+		},
+		{
+			"scope": ["keyword", "storage", "keyword.control.pyle", "storage.type"],
+			"settings": { "foreground": "#ff8a5c" }
+		},
+		{
+			"scope": ["keyword.operator", "keyword.operator.word.pyle"],
+			"settings": { "foreground": "#c9c4bb" }
+		},
+		{
+			"scope": ["entity.name.function", "support.function"],
+			"settings": { "foreground": "#ffd9a8" }
+		},
+		{
+			"scope": ["entity.name.type", "support.class", "storage.type.annotation", "support.type.primitive"],
+			"settings": { "foreground": "#7cc7ff" }
+		},
+		{
+			"scope": ["entity.name.function.call"],
+			"settings": { "foreground": "#ffd9a8" }
+		},
+		{
+			"scope": ["variable", "meta.function-call.pyle", "variable.parameter.function", "variable.other.property"],
+			"settings": { "foreground": "#e8e1d7" }
+		},
+		{
+			"scope": ["punctuation.separator.type", "punctuation.definition.parameters", "punctuation.separator.parameters"],
+			"settings": { "foreground": "#b8b2a8" }
+		},
+		{
+			"scope": ["variable.language", "variable.language.pyle"],
+			"settings": { "foreground": "#ff9a66", "fontStyle": "italic" }
+		},
+		{
+			"scope": ["punctuation"],
+			"settings": { "foreground": "#b8b2a8" }
+		}
+	]
+}

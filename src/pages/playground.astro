@@ -1,0 +1,402 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import '../styles/playground.css';
+
+const base = import.meta.env.BASE_URL;
+---
+
+<SiteLayout
+	title="Playground · Pyle"
+	description="Run Pyle in your browser. The playground is libpyle compiled to WebAssembly."
+>
+	<div class="playground-page">
+		<div class="playground-head">
+			<div>
+				<h1>Run Pyle in your browser.</h1>
+				<p>
+					The real language, compiled to WebAssembly. This build links libpyle and the core
+					modules: <code>os</code>, <code>path</code>, <code>fs</code>, <code>math</code>, and <code>color</code>.
+					The CLI-only modules are not included.
+				</p>
+			</div>
+		</div>
+
+		<div class="playground-toolbar">
+			<select class="example-select" data-example-select aria-label="Load an example"></select>
+			<div class="toolbar-actions">
+				<button class="tool-button tool-button--run" type="button" data-run>
+					Run
+					<kbd>Ctrl ↵</kbd>
+				</button>
+				<button class="tool-button" type="button" data-stop hidden>Stop</button>
+				<button class="tool-button" type="button" data-reset>Reset</button>
+			</div>
+		</div>
+
+		<form class="input-bar" data-input-bar hidden>
+			<span class="input-bar__label" data-input-label>input</span>
+			<input type="text" data-input-field autocomplete="off" spellcheck="false" aria-label="Input" />
+			<button class="tool-button" type="submit">Send</button>
+		</form>
+
+		<div class="playground-grid">
+			<section class="editor-panel">
+				<div class="panel-head">
+					<span>editor</span>
+					<span class="panel-head__right">playground.pyl</span>
+				</div>
+				<div id="editor"></div>
+			</section>
+
+			<section class="output-panel">
+				<div class="panel-head">
+					<span>output</span>
+					<button type="button" data-clear-output>clear</button>
+				</div>
+				<div class="output" id="output">
+					<div class="output-placeholder">Run a script to see output.</div>
+				</div>
+			</section>
+		</div>
+
+		<div class="playground-note">
+			<span>Runs entirely in a Web Worker. Stop terminates the worker and starts a fresh one.</span>
+			<span>Long-running scripts are stopped after 8 seconds.</span>
+		</div>
+	</div>
+
+	<script>
+		import { basicSetup } from 'codemirror';
+		import { indentWithTab } from '@codemirror/commands';
+		import { EditorState, Prec, StateEffect, StateField } from '@codemirror/state';
+		import { Decoration, EditorView, keymap } from '@codemirror/view';
+		import { defaultExample, examples } from '../playground/examples.js';
+		import { pyleLanguageSupport } from '../playground/pyle-language.js';
+
+		const base = import.meta.env.BASE_URL;
+		const storageKey = 'pyle-playground-code';
+		const exampleStorageKey = 'pyle-playground-example';
+
+		const editorHost = document.querySelector('#editor');
+		const output = document.querySelector('#output');
+		const exampleSelect = document.querySelector('[data-example-select]');
+		const runButton = document.querySelector('[data-run]');
+		const stopButton = document.querySelector('[data-stop]');
+		const resetButton = document.querySelector('[data-reset]');
+		const clearOutputButton = document.querySelector('[data-clear-output]');
+		const inputBar = document.querySelector('[data-input-bar]');
+		const inputLabel = document.querySelector('[data-input-label]');
+		const inputField = document.querySelector('[data-input-field]');
+
+		const errorLineEffect = StateEffect.define();
+
+		const errorLineField = StateField.define({
+			create: () => Decoration.none,
+			update(decorations, tr) {
+				decorations = decorations.map(tr.changes);
+				for (const effect of tr.effects) {
+					if (!effect.is(errorLineEffect)) continue;
+					if (effect.value == null) return Decoration.none;
+					const line = tr.state.doc.line(Math.min(effect.value, tr.state.doc.lines));
+					return Decoration.set([Decoration.line({ class: 'cm-error-line' }).range(line.from)]);
+				}
+				return decorations;
+			},
+			provide: (field) => EditorView.decorations.from(field),
+		});
+
+		const editorTheme = EditorView.theme(
+			{
+				'&': { backgroundColor: '#121216', color: '#e8e1d7', height: '100%' },
+				'.cm-content': { caretColor: '#ff6b2c' },
+				'.cm-scroller': { fontFamily: 'var(--pyle-font-mono)' },
+				'.cm-tooltip': { backgroundColor: '#1a1a21' },
+			},
+			{ dark: true },
+		);
+
+		const savedExample = localStorage.getItem(exampleStorageKey);
+		const savedCode = localStorage.getItem(storageKey);
+		const initialExample = examples.find((example) => example.id === savedExample) ?? defaultExample;
+
+		const view = new EditorView({
+			parent: editorHost,
+			state: EditorState.create({
+				doc: savedCode ?? initialExample.code,
+				extensions: [
+					basicSetup,
+					pyleLanguageSupport,
+					errorLineField,
+					editorTheme,
+					EditorView.lineWrapping,
+					Prec.high(
+						keymap.of([
+							{
+								key: 'Mod-Enter',
+								run: () => {
+									runScript();
+									return true;
+								},
+							},
+							indentWithTab,
+						])
+					),
+					EditorView.updateListener.of((update) => {
+						if (update.docChanged) localStorage.setItem(storageKey, update.state.doc.toString());
+					}),
+				],
+			}),
+		});
+		view.dom.addEventListener('keydown', (event) => {
+			if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+				event.preventDefault();
+				runScript();
+			}
+		});
+
+		for (const example of examples) {
+			const option = document.createElement('option');
+			option.value = example.id;
+			option.textContent = example.label;
+			exampleSelect.append(option);
+		}
+		exampleSelect.value = initialExample.id;
+
+		let worker = null;
+		let ready = false;
+		let running = false;
+		let runId = 0;
+		let runStarted = 0;
+		let runTimer = null;
+		let currentStderr = '';
+		let pendingRun = false;
+		let inputPending = false;
+
+		function stripAnsi(text) {
+			return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+		}
+
+		function clearOutput(showPlaceholder = false) {
+			output.replaceChildren();
+			if (showPlaceholder) {
+				const placeholder = document.createElement('div');
+				placeholder.className = 'output-placeholder';
+				placeholder.textContent = 'Run a script to see output.';
+				output.append(placeholder);
+			}
+		}
+
+		function appendLine(text, kind = 'stdout') {
+			const line = document.createElement('span');
+			line.className = `output-line output-line--${kind}`;
+			line.textContent = stripAnsi(text).replace(/\n$/, '');
+			output.append(line);
+			output.scrollTop = output.scrollHeight;
+		}
+
+		function appendSystem(text, kind = 'system') {
+			appendLine(text, kind);
+		}
+
+		function findErrorLine(text) {
+			const runtime = text.match(/-->\s+playground\.pyl:(\d+):/);
+			if (runtime) return Number(runtime[1]);
+			const compile = text.match(/playground\.pyl:(\d+):(\d+)/);
+			if (compile) return Number(compile[1]);
+			return null;
+		}
+
+		function highlightErrorLine(lineNumber) {
+			if (!lineNumber) {
+				view.dispatch({ effects: errorLineEffect.of(null) });
+				return;
+			}
+			const line = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
+			view.dispatch({
+				effects: errorLineEffect.of(lineNumber),
+				selection: { anchor: line.from },
+				scrollIntoView: true,
+			});
+		}
+
+		function resetRunUi() {
+			running = false;
+			if (runTimer) clearTimeout(runTimer);
+			runTimer = null;
+			inputPending = false;
+			inputBar.hidden = true;
+			runButton.disabled = false;
+			stopButton.hidden = true;
+		}
+
+		function armRunTimer() {
+			if (runTimer) clearTimeout(runTimer);
+			runTimer = setTimeout(() => {
+				appendSystem('Execution timed out after 8 seconds. Restarting the worker.', 'error');
+				restartWorker();
+			}, 8000);
+		}
+
+		function submitInput() {
+			if (!inputPending) return;
+			inputPending = false;
+			const line = inputField.value;
+			inputBar.hidden = true;
+			worker.postMessage({ type: 'input-response', line });
+			armRunTimer();
+		}
+
+		function createWorker() {
+			if (worker) worker.terminate();
+			ready = false;
+			running = false;
+			pendingRun = false;
+			worker = new Worker(`${base}playground/worker.js`);
+			worker.onmessage = handleMessage;
+			worker.onerror = (event) => {
+				appendSystem(`Worker error: ${event.message || 'unknown error'}`, 'error');
+				resetRunUi();
+			};
+			worker.postMessage({ type: 'init' });
+		}
+
+		function restartWorker() {
+			resetRunUi();
+			createWorker();
+		}
+
+		function handleMessage(event) {
+			const message = event.data;
+
+			if (message.type === 'ready') {
+				ready = true;
+				if (pendingRun) {
+					pendingRun = false;
+					runScript();
+				}
+				return;
+			}
+
+			if (message.type === 'init-error') {
+				clearOutput();
+				appendSystem('The WebAssembly build is missing.', 'error');
+				appendSystem('Run `npm run wasm` in the project root, then reload.', 'system');
+				console.error(message.message);
+				return;
+			}
+
+			if (message.type === 'stdout') {
+				appendLine(message.text, 'stdout');
+				return;
+			}
+
+			if (message.type === 'stderr') {
+				currentStderr += message.text;
+				appendLine(message.text, 'stderr');
+				return;
+			}
+
+			if (message.type === 'busy') {
+				appendSystem('A script is already running.', 'system');
+				return;
+			}
+
+			if (message.type === 'input-request') {
+				inputPending = true;
+				if (runTimer) {
+					clearTimeout(runTimer);
+					runTimer = null;
+				}
+				inputLabel.textContent = message.prompt || 'input';
+				inputField.value = '';
+				inputBar.hidden = false;
+				inputField.focus();
+				return;
+			}
+
+			if (message.type === 'worker-error') {
+				appendSystem(message.message, 'error');
+				resetRunUi();
+				return;
+			}
+
+			if (message.type === 'done') {
+				if (message.id !== runId) return;
+				const elapsed = Math.round(performance.now() - runStarted);
+				resetRunUi();
+				if (message.ok) {
+					appendSystem(`finished in ${elapsed} ms`, 'ok');
+				} else {
+					highlightErrorLine(findErrorLine(currentStderr));
+				}
+			}
+		}
+
+		function runScript() {
+			if (running) return;
+			if (!ready) {
+				pendingRun = true;
+				return;
+			}
+
+			const code = view.state.doc.toString();
+			if (!code.trim()) return;
+
+			running = true;
+			runId += 1;
+			runStarted = performance.now();
+			currentStderr = '';
+			clearOutput();
+			view.dispatch({ effects: errorLineEffect.of(null) });
+			runButton.disabled = true;
+			stopButton.hidden = false;
+
+			worker.postMessage({ type: 'run', id: runId, code });
+
+			armRunTimer();
+		}
+
+		runButton.addEventListener('click', runScript);
+
+		inputBar.addEventListener('submit', (event) => {
+			event.preventDefault();
+			submitInput();
+		});
+
+		stopButton.addEventListener('click', () => {
+			if (!running) return;
+			appendSystem('Stopped by user.', 'system');
+			restartWorker();
+		});
+
+		clearOutputButton.addEventListener('click', () => {
+			clearOutput(true);
+			view.dispatch({ effects: errorLineEffect.of(null) });
+		});
+
+		resetButton.addEventListener('click', () => {
+			view.dispatch({
+				changes: { from: 0, to: view.state.doc.length, insert: defaultExample.code },
+				effects: errorLineEffect.of(null),
+			});
+			exampleSelect.value = defaultExample.id;
+			localStorage.setItem(exampleStorageKey, defaultExample.id);
+			clearOutput(true);
+		});
+
+		exampleSelect.addEventListener('change', () => {
+			const example = examples.find((item) => item.id === exampleSelect.value);
+			if (!example) return;
+			view.dispatch({
+				changes: { from: 0, to: view.state.doc.length, insert: example.code },
+				effects: errorLineEffect.of(null),
+			});
+			localStorage.setItem(exampleStorageKey, example.id);
+			clearOutput(true);
+		});
+
+		window.addEventListener('beforeunload', () => worker?.terminate());
+
+		createWorker();
+	</script>
+</SiteLayout>

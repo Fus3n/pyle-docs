@@ -1,0 +1,13 @@
+---
+import { highlight } from '../shiki/highlight.mjs';
+
+interface Props {
+	code: string;
+	lang?: string;
+}
+
+const { code, lang = 'pyle' } = Astro.props;
+const html = await highlight(code, lang);
+---
+
+<Fragment set:html={html} />

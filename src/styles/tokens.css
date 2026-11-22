@@ -1,0 +1,36 @@
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/jetbrains-mono';
+
+:root {
+	--pyle-orange: #ff6b2c;
+	--pyle-orange-bright: #ff8f56;
+	--pyle-coral: #ff4d3d;
+	--pyle-amber: #ffc46b;
+	--pyle-green: #9bd36f;
+	--pyle-blue: #7cc7ff;
+
+	--pyle-ink: #0f0f13;
+	--pyle-ink-2: #15151b;
+	--pyle-ink-3: #1c1c24;
+	--pyle-ink-4: #262630;
+	--pyle-cream: #fff8ee;
+	--pyle-paper: #fbf3e7;
+	--pyle-stone: #a9a29a;
+
+	--pyle-line-dark: rgb(255 255 255 / 0.08);
+	--pyle-line-light: rgb(44 30 18 / 0.12);
+
+	--pyle-font-display: 'Space Grotesk Variable', 'Space Grotesk', ui-sans-serif, system-ui,
+		sans-serif;
+	--pyle-font-body: 'Space Grotesk Variable', 'Space Grotesk', ui-sans-serif, system-ui,
+		sans-serif;
+	--pyle-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular,
+		Menlo, Consolas, monospace;
+
+	--pyle-radius-sm: 0.5rem;
+	--pyle-radius-md: 0.875rem;
+	--pyle-radius-lg: 1.25rem;
+	--pyle-radius-xl: 1.75rem;
+
+	--pyle-shadow-glow: 0 0 0 1px rgb(255 107 44 / 0.25), 0 18px 60px rgb(255 77 61 / 0.18);
+}
