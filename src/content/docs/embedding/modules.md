@@ -41,8 +41,8 @@ print(mathx.cube(3))      # 27
 
 ```cpp
 pyle::NativeModule(vm, "config")
-    .int_constant("version_major", 0)
-    .int_constant("version_minor", 2)
+    .int_constant("version_major", 1)
+    .int_constant("version_minor", 0)
     .constant("display_name", std::string("My App"))
     .add_constants({ {"flag_a", 1}, {"flag_b", 2} })
     .function<&compute>("compute")

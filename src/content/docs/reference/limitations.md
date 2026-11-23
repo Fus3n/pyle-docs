@@ -65,7 +65,7 @@ Pyle is small on purpose. These features are absent, and some are unlikely to be
 
 ## Pre-1.0 status
 
-Pyle is version 0.2.0. Syntax and behavior can change between releases. Pin a commit if you embed it in something long-lived.
+Pyle is pre-1.0. Syntax and behavior can change between releases. Pin a commit if you embed it in something long-lived.
 
 ## Related
 

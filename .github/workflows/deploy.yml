@@ -63,6 +63,8 @@ jobs:
           fi
 
       - name: Build the site
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build
 
       - name: Configure Pages

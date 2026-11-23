@@ -45,7 +45,7 @@ Pyle is not a statically typed language, and type hints are never enforced at ru
 
 ## Status
 
-The current version is **0.2.0**. The desktop test suite covers the language, standard library, and embedding APIs; the same suite runs under Node for the `wasm32` build with process tests excluded.
+The current release is **{{pyle.version}}**. Pyle is pre-1.0, so syntax and behavior can change between releases. The desktop test suite covers the language, standard library, and embedding APIs; the same suite runs under Node for the `wasm32` build with process tests excluded.
 
 ## Next steps
 

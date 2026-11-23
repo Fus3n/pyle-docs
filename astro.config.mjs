@@ -4,6 +4,7 @@ import { unified } from '@astrojs/markdown-remark';
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import { remarkLinkTypes } from './scripts/remark-link-types.mjs';
+import { remarkPyleVersion } from './scripts/remark-pyle-version.mjs';
 
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 
@@ -57,7 +58,7 @@ export default defineConfig({
 	},
 	markdown: {
 		processor: unified({
-			remarkPlugins: [remarkLinkTypes],
+			remarkPlugins: [remarkLinkTypes, remarkPyleVersion],
 			rehypePlugins: [[rehypeBaseLinks, base]],
 		}),
 		shikiConfig: {

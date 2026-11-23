@@ -123,7 +123,7 @@ See [Error Handling](/language/errors/) for the error map shape.
 
 | Name | Type | Description |
 | --- | --- | --- |
-| `PYLE_VERSION: string` | `string` | Interpreter version string, for example `"0.2.0"` |
+| `PYLE_VERSION: string` | `string` | Interpreter version string, for example `"{{pyle.version}}"` |
 | `int`, `float`, `bool`, `string`, `array`, `map`, `bytes` | `string` | Type-name string constants |
 
 ```pyle

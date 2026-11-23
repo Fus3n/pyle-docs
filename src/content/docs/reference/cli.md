@@ -21,7 +21,7 @@ The misspelling `--dissassamble` is the actual flag name. `-d` is the short form
 
 ```sh
 pyle --version
-# Pyle version 0.2.0 (abc1234)
+# Pyle version {{pyle.version}} (abc1234)
 
 pyle -d script.pyl
 pyle script.pyl one two --flag
