@@ -378,7 +378,7 @@ async.run(main)
 | `assert(cond, msg?)` | `(any, string?) -> any` | Return cond if truthy, else raise `AssertionError` (catchable by pcall, otherwise panics). |
 | `print_trace(err)` | `(Map) -> none` | Print a pcall result or error map using the runtime error format (frames, snippet, hint). Tolerates malformed input. |
 | `raise(err)` | `(Map/string) -> none` | Re-raise an error map (or message string) with its trace preserved. A map needs `type`/`message`/`trace`; anything else is a `TypeError`. Uncaught, it takes the normal panic path. |
-| `PYLE_VERSION` | `(string constant)` | Running interpreter version, e.g. `"0.2.0"`. |
+| `PYLE_VERSION` | `(string constant)` | Running interpreter version string. Latest release: https://github.com/Fus3n/pyle/releases/latest |
 | `exit(code?)` | `(int?) -> none` | Exit the process with optional exit code (default 0). |
 
 ---
