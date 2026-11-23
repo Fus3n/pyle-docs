@@ -1632,16 +1632,24 @@ struct Player(name, health, pos, _private_prop) {
         self.name = n; self.health = 100
         self.pos = Pos(x: 0, y: 0)
     }
+    fn setHealth(new_health) { self.health = new_health }
     fn damageBy(n) { self.health -= n }
+    fn distanceFrom(other) {
+        return Pos(x: self.pos.x - other.x, y: self.pos.y - other.y)
+    }
+    fn _private_function(msg) { print(msg) }
     fn status() { return format("Name: {}\nHealth: {}", self.name, self.health) }
     static fn update_players(arr, p) { arr.append(p) }
 }
 
+let players = []
 let p = Player("John")
 print(p.status())
 p.damageBy(20)
 printf("{} has {} hp left.", p.name, p.health)
 print(p.distanceFrom(Pos(x: 0, y: 5)))
+Player.update_players(players, p)
+print(players.size())
 
 --------------------------------------------------------------------------------
 Raylib Examples
@@ -1739,6 +1747,24 @@ struct Life(cols, rows, grid) {
         if rl.GetRandomValue(0, 99) < 30 { cell.revive() } else { cell.kill() }
     }}
     fn clear() { for cell in self.grid { cell.kill() } }
+    fn step() {
+        let next = []
+        for y in 0..self.rows { for x in 0..self.cols {
+            let n = 0
+            for dy in -1..2 { for dx in -1..2 {
+                if dx != 0 or dy != 0 {
+                    let nx = (x + dx + self.cols) % self.cols
+                    let ny = (y + dy + self.rows) % self.rows
+                    n += self.at(nx, ny).alive
+                }
+            }}
+            let alive = self.at(x, y).alive
+            if alive == 1 and (n == 2 or n == 3) { next.append(Cell(1, self.at(x, y).age + 1)) }
+            else if alive == 0 and n == 3 { next.append(Cell(1, 1)) }
+            else { next.append(Cell(0, 0)) }
+        }}
+        self.grid = next
+    }
 }
 
 let life = Life(COLS, ROWS)
@@ -1767,7 +1793,7 @@ while not rl.WindowShouldClose() {
     if rl.IsKeyPressed(82) { life.reseed() }
     if rl.IsKeyPressed(67) { life.clear() }
 
-    life.step()  # (simplified — full neighbor-count logic in source)
+    life.step()
 
     rl.BeginDrawing()
     rl.ClearBackground(rl.BLACK)
